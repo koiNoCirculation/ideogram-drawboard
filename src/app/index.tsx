@@ -1,98 +1,139 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+} from 'react-native';
+import { useRouter } from 'expo-router';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+const RECENT_DESIGNS = [
+  "A lone sailboat on calm water at sunset.",
+  "A medium-shot photograph of a barista pouring latte art in a cozy cafe",
+  "an isometric illustration of a tiny city floating in the clouds",
+];
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+export default function IndexScreen() {
+  const router = useRouter();
+  const [description, setDescription] = useState('');
+
+  const handleStartDesigning = () => {
+    // In a real app, we might pass the description to the next screen
+    router.push('/design');
+  };
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <SafeAreaView style={styles.container}>
+      <View style={styles.mainContent}>
+        {/* Left Sidebar: Recent Designs */}
+        <View style={styles.leftSidebar}>
+          <Text style={styles.sidebarTitle}>最近的设计</Text>
+          <ScrollView style={styles.recentList}>
+            {RECENT_DESIGNS.map((item, index) => (
+              <TouchableOpacity key={index} style={styles.card}>
+                <Text style={styles.cardText}>{item}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        {/* Right Section: Input Area */}
+        <View style={styles.rightSection}>
+          <Text style={styles.sectionTitle}>Enter the description of your dreamed image</Text>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.textArea}
+              placeholder="a golden retriever on a skateboard"
+              placeholderTextColor="#999"
+              multiline
+              value={description}
+              onChangeText={setDescription}
+            />
+          </View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={handleStartDesigning}
+          >
+            <Text style={styles.buttonText}>开始设计</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  mainContent: {
+    flex: 1,
     flexDirection: 'row',
   },
-  safeArea: {
+  leftSidebar: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    borderRightWidth: 1,
+    borderRightColor: '#EEEEEE',
+    padding: 16,
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  sidebarTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#333',
+  },
+  recentList: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
   },
-  title: {
-    textAlign: 'center',
+  card: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
   },
-  code: {
-    textTransform: 'uppercase',
+  cardText: {
+    fontSize: 14,
+    color: '#666',
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  rightSection: {
+    flex: 2,
+    padding: 24,
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#000',
+  },
+  inputContainer: {
+    flex: 1,
+    marginBottom: 20,
+  },
+  textArea: {
+    flex: 1,
+    borderColor: '#DDD',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 18,
+    textAlignVertical: 'top',
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
