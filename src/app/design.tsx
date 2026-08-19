@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { Image as ImageIcon, Type } from 'lucide-react-native';
 import { useState } from 'react';
 import {
@@ -11,7 +10,6 @@ import {
 } from 'react-native';
 
 export default function DesignScreen() {
-  const router = useRouter();
   const [title, setTitle] = useState('Untitled Design');
 
   return (
