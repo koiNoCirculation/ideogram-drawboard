@@ -18,12 +18,72 @@ interface RefinedPrompt {
         background: string;
         elements: Array<{
             type: 'obj' | 'text';
+            /** Ideogram normalized bbox: [y_min, x_min, y_max, x_max] in 0-1000, top-left origin. */
             bbox?: [number, number, number, number];
             desc?: string;
             text?: string;
         }>;
     };
 }
+
+type CanvasElement = RefinedPrompt['compositional_deconstruction']['elements'][number];
+
+/**
+ * A component to render a single parsed element (obj or text) on the canvas,
+ * positioned by its normalized (0-1000) bounding box.
+ */
+const ElementBox = ({
+    element,
+    left,
+    top,
+    width,
+    height,
+    hovered,
+    onHoverIn,
+    onHoverOut,
+}: {
+    element: CanvasElement;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    hovered: boolean;
+    onHoverIn: () => void;
+    onHoverOut: () => void;
+}) => {
+    const isText = element.type === 'text';
+    return (
+        <View
+            style={[
+                styles.elementBox,
+                { left, top, width, height },
+                hovered && styles.elementBoxHovered,
+            ]}
+            onPointerEnter={onHoverIn}
+            onPointerLeave={onHoverOut}
+        >
+            {/* Top-left corner icon: "T" for text, image icon for obj */}
+            <View
+                style={[
+                    styles.elementIcon,
+                    isText ? styles.elementIconText : styles.elementIconObj,
+                ]}
+            >
+                {isText ? (
+                    <Text style={styles.elementIconChar}>T</Text>
+                ) : (
+                    <ImageIcon size={14} color="#FFFFFF" />
+                )}
+            </View>
+
+            {isText ? (
+                <Text style={styles.elementTextContent}>{element.text}</Text>
+            ) : (
+                <Text style={styles.elementDescText}>{element.desc}</Text>
+            )}
+        </View>
+    );
+};
 
 /**
  * A small component to display a keyword as a stylized tag.
@@ -57,6 +117,7 @@ export default function DesignScreen() {
     const [palette, setPalette] = useState<string[]>([]);
     const [refinedData, setRefinedData] = useState<RefinedPrompt | null>(null);
     const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
     useEffect(() => {
         try {
@@ -87,6 +148,18 @@ export default function DesignScreen() {
 
     const handleBack = () => {
         router.back();
+    };
+
+    // Convert a normalized (0-1000) bbox into pixel geometry on the canvas.
+    // Ideogram format: [y_min, x_min, y_max, x_max], (0, 0) at top-left.
+    const getElementGeometry = (element: CanvasElement) => {
+        const [yMin, xMin, yMax, xMax] = element.bbox!;
+        return {
+            left: (xMin / 1000) * canvasSize.width,
+            top: (yMin / 1000) * canvasSize.height,
+            width: ((xMax - xMin) / 1000) * canvasSize.width,
+            height: ((yMax - yMin) / 1000) * canvasSize.height,
+        };
     };
 
     return (
@@ -157,15 +230,64 @@ export default function DesignScreen() {
                         </ScrollView>
                     </View>
 
+                    {/* Background Info */}
+                    {refinedData?.compositional_deconstruction?.background && (
+                        <View style={styles.backgroundContainer}>
+                            <Text style={styles.groupLabel}>Background</Text>
+                            <Text style={styles.backgroundText}>{refinedData.compositional_deconstruction.background}</Text>
+                        </View>
+                    )}
+
                     {/* Canvas Placeholder */}
                     <View style={styles.canvasContainer}>
                         <View style={[styles.canvas, { width: canvasSize.width, height: canvasSize.height }]}>
-                            {refinedData ? (
-                                <View style={styles.infoOverlay}>
-                                    <Text style={styles.infoText}>Parsed Concept:</Text>
-                                    <Text style={styles.descText}>{refinedData.high_level_description}</Text>
-                                    <Text style={styles.countText}>Elements detected: {refinedData.compositional_deconstruction.elements.length}</Text>
-                                </View>
+                            {refinedData && refinedData.compositional_deconstruction.elements.length > 0 ? (
+                                <>
+                                    {refinedData.compositional_deconstruction.elements.map((element, index) => {
+                                        if (!element.bbox) return null;
+                                        const geo = getElementGeometry(element);
+                                        return (
+                                            <ElementBox
+                                                key={`el-${index}`}
+                                                element={element}
+                                                {...geo}
+                                                hovered={hoveredIndex === index}
+                                                onHoverIn={() => setHoveredIndex(index)}
+                                                onHoverOut={() => setHoveredIndex(null)}
+                                            />
+                                        );
+                                    })}
+
+                                    {/* Floating tooltip for the hovered text element */}
+                                    {(() => {
+                                        if (hoveredIndex === null) return null;
+                                        const element = refinedData.compositional_deconstruction.elements[hoveredIndex];
+                                        if (!element || element.type !== 'text' || !element.bbox) return null;
+                                        const geo = getElementGeometry(element);
+                                        const width = 260;
+                                        const left = Math.min(
+                                            Math.max(geo.left + geo.width / 2 - width / 2, 8),
+                                            Math.max(canvasSize.width - width - 8, 8),
+                                        );
+                                        // Prefer showing above the box; flip below if there's no room.
+                                        const showAbove = geo.top > 90;
+                                        const position = showAbove
+                                            ? { bottom: canvasSize.height - geo.top + 10 }
+                                            : { top: geo.top + geo.height + 10 };
+                                        return (
+                                            <View pointerEvents="none" style={[styles.tooltip, { left, width }, position]}>
+                                                <Text style={styles.tooltipText}>{element.desc}</Text>
+                                                <View
+                                                    style={[
+                                                        styles.tooltipArrow,
+                                                        { left: geo.left + geo.width / 2 - left - 5 },
+                                                        showAbove ? { bottom: -5 } : { top: -5 },
+                                                    ]}
+                                                />
+                                            </View>
+                                        );
+                                    })()}
+                                </>
                             ) : (
                                 <Text style={styles.canvasPlaceholderText}>Canvas Area</Text>
                             )}
@@ -268,6 +390,18 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#EEE',
     },
+    backgroundContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#FDFDFD',
+        borderBottomWidth: 1,
+        borderBottomColor: '#EEEEEE',
+    },
+    backgroundText: {
+        fontSize: 14,
+        color: '#444',
+        lineHeight: 20,
+    },
     canvasContainer: {
         flex: 1,
         padding: 20,
@@ -280,34 +414,80 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
     },
     canvasPlaceholderText: {
         color: '#CCC',
         fontSize: 20,
     },
-    infoOverlay: {
-        width: '100%',
+    elementBox: {
+        position: 'absolute',
+        borderWidth: 1,
+        borderColor: '#007AFF',
+        borderStyle: 'dashed',
+        backgroundColor: 'rgba(0, 122, 255, 0.05)',
         alignItems: 'center',
+        justifyContent: 'center',
+        padding: 6,
     },
-    infoText: {
+    elementBoxHovered: {
+        backgroundColor: 'rgba(0, 122, 255, 0.12)',
+    },
+    elementIcon: {
+        position: 'absolute',
+        top: 4,
+        left: 4,
+        borderRadius: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    elementIconText: {
+        width: 18,
+        height: 18,
+        backgroundColor: '#FF9500',
+    },
+    elementIconObj: {
+        width: 18,
+        height: 18,
+        backgroundColor: '#007AFF',
+    },
+    elementIconChar: {
+        color: '#FFFFFF',
         fontSize: 12,
-        color: '#AAA',
-        textTransform: 'uppercase',
-        letterSpacing: 1,
-        marginBottom: 8,
+        fontWeight: 'bold',
     },
-    descText: {
-        fontSize: 16,
+    elementTextContent: {
+        fontSize: 13,
         color: '#333',
         textAlign: 'center',
-        lineHeight: 24,
-        fontStyle: 'italic',
     },
-    countText: {
-        marginTop: 16,
-        fontSize: 14,
-        color: '#007AFF',
-        fontWeight: 'bold',
+    elementDescText: {
+        fontSize: 11,
+        color: '#666',
+        textAlign: 'center',
+    },
+    tooltip: {
+        position: 'absolute',
+        backgroundColor: '#333333',
+        borderRadius: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        zIndex: 10,
+        shadowColor: '#000',
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 6,
+    },
+    tooltipText: {
+        fontSize: 12,
+        color: '#FFFFFF',
+        lineHeight: 17,
+    },
+    tooltipArrow: {
+        position: 'absolute',
+        width: 10,
+        height: 10,
+        backgroundColor: '#333333',
+        transform: [{ rotate: '45deg' }],
     },
 });
