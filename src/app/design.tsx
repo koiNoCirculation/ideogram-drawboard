@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ImageIcon, Type } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Image,
+    PanResponder,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -43,7 +44,8 @@ type CanvasElement = RefinedPrompt['compositional_deconstruction']['elements'][n
 
 /**
  * A component to render a single parsed element (obj or text) on the canvas,
- * positioned by its normalized (0-1000) bounding box.
+ * positioned by its normalized (0-1000) bounding box. Draggable: reports pixel
+ * deltas to the parent, which updates the bbox in the JSON prompt.
  */
 const ElementBox = ({
     element,
@@ -54,6 +56,9 @@ const ElementBox = ({
     hovered,
     onHoverIn,
     onHoverOut,
+    onDragStart,
+    onDragMove,
+    onDragEnd,
 }: {
     element: CanvasElement;
     left: number;
@@ -63,8 +68,33 @@ const ElementBox = ({
     hovered: boolean;
     onHoverIn: () => void;
     onHoverOut: () => void;
+    onDragStart: () => void;
+    onDragMove: (dxPx: number, dyPx: number) => void;
+    onDragEnd: () => void;
 }) => {
     const isText = element.type === 'text';
+
+    // The PanResponder is created once, so route through refs to always call
+    // the latest parent handlers (they capture displaySize at render time).
+    const dragStartRef = useRef(onDragStart);
+    const dragMoveRef = useRef(onDragMove);
+    const dragEndRef = useRef(onDragEnd);
+    dragStartRef.current = onDragStart;
+    dragMoveRef.current = onDragMove;
+    dragEndRef.current = onDragEnd;
+
+    const panResponder = useRef(
+        PanResponder.create({
+            // Small slop so taps/hovers are unaffected.
+            onMoveShouldSetPanResponder: (_e, g) =>
+                Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+            onPanResponderGrant: () => dragStartRef.current(),
+            onPanResponderMove: (_e, g) => dragMoveRef.current(g.dx, g.dy),
+            onPanResponderRelease: () => dragEndRef.current(),
+            onPanResponderTerminate: () => dragEndRef.current(),
+        })
+    ).current;
+
     return (
         <View
             style={[
@@ -74,6 +104,7 @@ const ElementBox = ({
             ]}
             onPointerEnter={onHoverIn}
             onPointerLeave={onHoverOut}
+            {...panResponder.panHandlers}
         >
             {/* Top-left corner icon: "T" for text, image icon for obj */}
             <View
@@ -132,6 +163,9 @@ export default function DesignScreen() {
     const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
     const [canvasAreaSize, setCanvasAreaSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    // Base bbox captured when a drag starts; live moves are computed from it so
+    // the element's moving position never feeds back into the gesture delta.
+    const dragBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number] } | null>(null);
     const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
@@ -183,6 +217,42 @@ export default function DesignScreen() {
             width: ((xMax - xMin) / 1000) * displaySize.width,
             height: ((yMax - yMin) / 1000) * displaySize.height,
         };
+    };
+
+    // Clamp a normalized (0-1000) bbox so it stays fully inside the canvas.
+    const clampBbox = (bbox: [number, number, number, number]): [number, number, number, number] => {
+        const [yMin, xMin, yMax, xMax] = bbox;
+        const x = Math.min(Math.max(xMin, 0), Math.max(1000 - (xMax - xMin), 0));
+        const y = Math.min(Math.max(yMin, 0), Math.max(1000 - (yMax - yMin), 0));
+        return [y, x, y + (yMax - yMin), x + (xMax - xMin)];
+    };
+
+    const handleDragStart = (index: number) => {
+        const element = refinedData?.compositional_deconstruction.elements[index];
+        if (!element?.bbox) return;
+        dragBaseRef.current = { index, baseBbox: element.bbox };
+    };
+
+    // Live-update the dragged element's bbox in the JSON prompt (normalized 0-1000).
+    const handleDragMove = (dxPx: number, dyPx: number) => {
+        const drag = dragBaseRef.current;
+        if (!drag || displaySize.width <= 0 || displaySize.height <= 0) return;
+        const dx = (dxPx / displaySize.width) * 1000;
+        const dy = (dyPx / displaySize.height) * 1000;
+        const [yMin, xMin, yMax, xMax] = drag.baseBbox;
+        const clamped = clampBbox([yMin + dy, xMin + dx, yMax + dy, xMax + dx]);
+        const { index } = drag;
+        setRefinedData((prev) => {
+            if (!prev) return prev;
+            const elements = prev.compositional_deconstruction.elements.map((el, i) =>
+                i === index ? { ...el, bbox: clamped } : el
+            );
+            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
+        });
+    };
+
+    const handleDragEnd = () => {
+        dragBaseRef.current = null;
     };
 
     // Call the local Ideogram-compatible service to generate the image.
@@ -335,6 +405,9 @@ export default function DesignScreen() {
                                                     hovered={hoveredIndex === index}
                                                     onHoverIn={() => setHoveredIndex(index)}
                                                     onHoverOut={() => setHoveredIndex(null)}
+                                                    onDragStart={() => handleDragStart(index)}
+                                                    onDragMove={handleDragMove}
+                                                    onDragEnd={handleDragEnd}
                                                 />
                                             );
                                         })}
