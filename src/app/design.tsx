@@ -2,6 +2,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ImageIcon, Type } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
+    Image,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -11,9 +13,20 @@ import {
     View
 } from 'react-native';
 
+const IDEOGRAM_API_BASE = 'http://127.0.0.1:8000';
+const IDEOGRAM_API_KEY = ''; // leave empty if the local service handles auth
+
 interface RefinedPrompt {
     aspect_ratio: string;
     high_level_description: string;
+    style_description?: {
+        aesthetics?: string;
+        lighting?: string;
+        medium?: string;
+        art_style?: string;
+        photo?: string;
+        color_palette?: string[];
+    };
     compositional_deconstruction: {
         background: string;
         elements: Array<{
@@ -117,7 +130,11 @@ export default function DesignScreen() {
     const [palette, setPalette] = useState<string[]>([]);
     const [refinedData, setRefinedData] = useState<RefinedPrompt | null>(null);
     const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    const [canvasAreaSize, setCanvasAreaSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generateError, setGenerateError] = useState<string | null>(null);
 
     useEffect(() => {
         try {
@@ -146,8 +163,14 @@ export default function DesignScreen() {
         }
     }, [params.promptData, params.size]);
 
-    const handleBack = () => {
-        router.back();
+
+    // Scale the requested canvas size to fit the available area, preserving aspect ratio.
+    const scale = canvasSize.width > 0 && canvasSize.height > 0 && canvasAreaSize.width > 0
+        ? Math.min(canvasAreaSize.width / canvasSize.width, canvasAreaSize.height / canvasSize.height)
+        : 0;
+    const displaySize = {
+        width: canvasSize.width * scale,
+        height: canvasSize.height * scale,
     };
 
     // Convert a normalized (0-1000) bbox into pixel geometry on the canvas.
@@ -155,11 +178,47 @@ export default function DesignScreen() {
     const getElementGeometry = (element: CanvasElement) => {
         const [yMin, xMin, yMax, xMax] = element.bbox!;
         return {
-            left: (xMin / 1000) * canvasSize.width,
-            top: (yMin / 1000) * canvasSize.height,
-            width: ((xMax - xMin) / 1000) * canvasSize.width,
-            height: ((yMax - yMin) / 1000) * canvasSize.height,
+            left: (xMin / 1000) * displaySize.width,
+            top: (yMin / 1000) * displaySize.height,
+            width: ((xMax - xMin) / 1000) * displaySize.width,
+            height: ((yMax - yMin) / 1000) * displaySize.height,
         };
+    };
+
+    // Call the local Ideogram-compatible service to generate the image.
+    const handleGenerate = async () => {
+        if (!refinedData || isGenerating) return;
+        setIsGenerating(true);
+        setGenerateError(null);
+        try {
+            const formData = new FormData();
+            // The service expects json_prompt as a plain string field, not a file upload.
+            formData.append('json_prompt', JSON.stringify(refinedData));
+            formData.append('response_type', 'url');
+            formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
+
+            const headers: Record<string, string> = {};
+            if (IDEOGRAM_API_KEY) headers['Api-Key'] = IDEOGRAM_API_KEY;
+
+            const response = await fetch(`${IDEOGRAM_API_BASE}/v1/ideogram-v4/generate`, {
+                method: 'POST',
+                headers,
+                body: formData,
+            });
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+            const result = await response.json();
+            const url: string | undefined = result?.data?.[0]?.url;
+            if (!url) {
+                throw new Error('No image URL in response');
+            }
+            setGeneratedImageUrl(url);
+        } catch (error: any) {
+            setGenerateError(error?.message ?? 'Generation failed');
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     return (
@@ -240,58 +299,97 @@ export default function DesignScreen() {
 
                     {/* Canvas Placeholder */}
                     <View style={styles.canvasContainer}>
-                        <View style={[styles.canvas, { width: canvasSize.width, height: canvasSize.height }]}>
-                            {refinedData && refinedData.compositional_deconstruction.elements.length > 0 ? (
-                                <>
-                                    {refinedData.compositional_deconstruction.elements.map((element, index) => {
-                                        if (!element.bbox) return null;
-                                        const geo = getElementGeometry(element);
-                                        return (
-                                            <ElementBox
-                                                key={`el-${index}`}
-                                                element={element}
-                                                {...geo}
-                                                hovered={hoveredIndex === index}
-                                                onHoverIn={() => setHoveredIndex(index)}
-                                                onHoverOut={() => setHoveredIndex(null)}
-                                            />
-                                        );
-                                    })}
+                        <View
+                            style={styles.canvasSizer}
+                            onLayout={(e) => {
+                                setCanvasAreaSize({
+                                    width: e.nativeEvent.layout.width,
+                                    height: e.nativeEvent.layout.height,
+                                })
+                            }
+                            }
+                        >
+                            <View style={[styles.canvas, { width: displaySize.width, height: displaySize.height }]}>
+                                {/* Generated image: rendered first so the element boxes overlay it */}
+                                {generatedImageUrl && (
+                                    <Image
+                                        source={{ uri: generatedImageUrl }}
+                                        style={[
+                                            styles.generatedImage,
+                                            { width: displaySize.width, height: displaySize.height },
+                                        ]}
+                                        resizeMode="cover"
+                                    />
+                                )}
 
-                                    {/* Floating tooltip for the hovered text element */}
-                                    {(() => {
-                                        if (hoveredIndex === null) return null;
-                                        const element = refinedData.compositional_deconstruction.elements[hoveredIndex];
-                                        if (!element || element.type !== 'text' || !element.bbox) return null;
-                                        const geo = getElementGeometry(element);
-                                        const width = 260;
-                                        const left = Math.min(
-                                            Math.max(geo.left + geo.width / 2 - width / 2, 8),
-                                            Math.max(canvasSize.width - width - 8, 8),
-                                        );
-                                        // Prefer showing above the box; flip below if there's no room.
-                                        const showAbove = geo.top > 90;
-                                        const position = showAbove
-                                            ? { bottom: canvasSize.height - geo.top + 10 }
-                                            : { top: geo.top + geo.height + 10 };
-                                        return (
-                                            <View pointerEvents="none" style={[styles.tooltip, { left, width }, position]}>
-                                                <Text style={styles.tooltipText}>{element.desc}</Text>
-                                                <View
-                                                    style={[
-                                                        styles.tooltipArrow,
-                                                        { left: geo.left + geo.width / 2 - left - 5 },
-                                                        showAbove ? { bottom: -5 } : { top: -5 },
-                                                    ]}
+                                {refinedData && refinedData.compositional_deconstruction.elements.length > 0 ? (
+                                    <>
+                                        {refinedData.compositional_deconstruction.elements.map((element, index) => {
+                                            if (!element.bbox) return null;
+                                            const geo = getElementGeometry(element);
+                                            return (
+                                                <ElementBox
+                                                    key={`el-${index}`}
+                                                    element={element}
+                                                    {...geo}
+                                                    hovered={hoveredIndex === index}
+                                                    onHoverIn={() => setHoveredIndex(index)}
+                                                    onHoverOut={() => setHoveredIndex(null)}
                                                 />
-                                            </View>
-                                        );
-                                    })()}
-                                </>
-                            ) : (
-                                <Text style={styles.canvasPlaceholderText}>Canvas Area</Text>
-                            )}
+                                            );
+                                        })}
+
+                                        {/* Floating tooltip for the hovered text element */}
+                                        {(() => {
+                                            if (hoveredIndex === null) return null;
+                                            const element = refinedData.compositional_deconstruction.elements[hoveredIndex];
+                                            if (!element || element.type !== 'text' || !element.bbox) return null;
+                                            const geo = getElementGeometry(element);
+                                            const width = 260;
+                                            const left = Math.min(
+                                                Math.max(geo.left + geo.width / 2 - width / 2, 8),
+                                                Math.max(displaySize.width - width - 8, 8),
+                                            );
+                                            // Prefer showing above the box; flip below if there's no room.
+                                            const showAbove = geo.top > 90;
+                                            const position = showAbove
+                                                ? { bottom: displaySize.height - geo.top + 10 }
+                                                : { top: geo.top + geo.height + 10 };
+                                            return (
+                                                <View pointerEvents="none" style={[styles.tooltip, { left, width }, position]}>
+                                                    <Text style={styles.tooltipText}>{element.desc}</Text>
+                                                    <View
+                                                        style={[
+                                                            styles.tooltipArrow,
+                                                            { left: geo.left + geo.width / 2 - left - 5 },
+                                                            showAbove ? { bottom: -5 } : { top: -5 },
+                                                        ]}
+                                                    />
+                                                </View>
+                                            );
+                                        })()}
+                                    </>
+                                ) : (
+                                    <Text style={styles.canvasPlaceholderText}>Canvas Area</Text>
+                                )}
+                            </View>
                         </View>
+
+                        {/* Generate button */}
+                        <View style={styles.generateRow}>
+                            <TouchableOpacity
+                                style={[styles.generateButton, !refinedData && styles.generateButtonDisabled]}
+                                onPress={handleGenerate}
+                                disabled={!refinedData || isGenerating}
+                            >
+                                {isGenerating ? (
+                                    <ActivityIndicator color="#FFFFFF" size="small" />
+                                ) : (
+                                    <Text style={styles.generateButtonText}>Generate</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                        {generateError && <Text style={styles.generateError}>{generateError}</Text>}
                     </View>
                 </View>
             </View>
@@ -409,11 +507,51 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    canvasSizer: {
+        flex: 1,
+        // Force full width: the parent centers children, which would otherwise
+        // shrink the sizer to its content width (0 until measured — a deadlock).
+        alignSelf: 'stretch',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     canvas: {
         backgroundColor: '#FFFFFF',
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    generatedImage: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+    },
+    generateRow: {
+        marginTop: 16,
+        alignItems: 'center',
+    },
+    generateButton: {
+        backgroundColor: '#007AFF',
+        borderRadius: 8,
+        paddingHorizontal: 24,
+        paddingVertical: 10,
+        minWidth: 120,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    generateButtonDisabled: {
+        backgroundColor: '#B0D4FF',
+    },
+    generateButtonText: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    generateError: {
+        marginTop: 8,
+        fontSize: 13,
+        color: '#E53935',
     },
     canvasPlaceholderText: {
         color: '#CCC',
@@ -424,13 +562,13 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#007AFF',
         borderStyle: 'dashed',
-        backgroundColor: 'rgba(0, 122, 255, 0.05)',
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 6,
     },
     elementBoxHovered: {
-        backgroundColor: 'rgba(0, 122, 255, 0.12)',
+        backgroundColor: '#FFFFFF',
     },
     elementIcon: {
         position: 'absolute',
