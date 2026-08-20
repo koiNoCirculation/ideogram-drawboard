@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Image,
-    PanResponder,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -13,35 +12,13 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { ColorPalette } from './components/ColorPalette';
+import { Corner, ElementBox, MIN_ELEMENT_SIZE } from './components/ElementBox';
 import { resolveContradictionInBBox } from './services/PromptRefiner';
+import { CanvasElement, RefinedPrompt, isEmptyElement } from './types';
 
 const IDEOGRAM_API_BASE = 'http://127.0.0.1:8000';
 const IDEOGRAM_API_KEY = ''; // leave empty if the local service handles auth
-
-interface RefinedPrompt {
-    aspect_ratio: string;
-    high_level_description: string;
-    style_description?: {
-        aesthetics?: string;
-        lighting?: string;
-        medium?: string;
-        art_style?: string;
-        photo?: string;
-        color_palette?: string[];
-    };
-    compositional_deconstruction: {
-        background: string;
-        elements: Array<{
-            type: 'obj' | 'text';
-            /** Ideogram normalized bbox: [y_min, x_min, y_max, x_max] in 0-1000, top-left origin. */
-            bbox?: [number, number, number, number];
-            desc?: string;
-            text?: string;
-        }>;
-    };
-}
-
-type CanvasElement = RefinedPrompt['compositional_deconstruction']['elements'][number];
 
 /**
  * Parse the LLM's rewritten caption, tolerating stray markdown fences or prose
@@ -62,177 +39,8 @@ function parseRewrittenCaption(content: string): RefinedPrompt {
     return parsed as RefinedPrompt;
 }
 
-/** Which corner of the box a resize gesture started from. */
-type Corner = 'nw' | 'ne' | 'sw' | 'se';
-
-/** Minimum element size in normalized (0-1000) units, so corners can't cross. */
-const MIN_ELEMENT_SIZE = 20;
-
-/**
- * A component to render a single parsed element (obj or text) on the canvas,
- * positioned by its normalized (0-1000) bounding box. Draggable: reports pixel
- * deltas to the parent, which updates the bbox in the JSON prompt.
- */
-const ElementBox = ({
-    element,
-    left,
-    top,
-    width,
-    height,
-    hovered,
-    onHoverIn,
-    onHoverOut,
-    onDragStart,
-    onDragMove,
-    onDragEnd,
-    onResizeStart,
-    onResizeMove,
-    onResizeEnd,
-    onContextMenu,
-}: {
-    element: CanvasElement;
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-    hovered: boolean;
-    onHoverIn: () => void;
-    onHoverOut: () => void;
-    onDragStart: () => void;
-    onDragMove: (dxPx: number, dyPx: number) => void;
-    onDragEnd: () => void;
-    onResizeStart: (corner: Corner) => void;
-    onResizeMove: (dxPx: number, dyPx: number) => void;
-    onResizeEnd: () => void;
-    /** Right-click (web) on the box: opens the edit context menu. */
-    onContextMenu: (e: any) => void;
-}) => {
-    const isText = element.type === 'text';
-
-    // Shrink the move surface away from the edges so drags starting near a
-    // corner go to the resize handles instead of moving the element.
-    const moveInset = Math.min(14, Math.max(0, Math.floor(Math.min(width, height) / 4)));
-
-    // The PanResponder is created once, so route through refs to always call
-    // the latest parent handlers (they capture displaySize at render time).
-    const dragStartRef = useRef(onDragStart);
-    const dragMoveRef = useRef(onDragMove);
-    const dragEndRef = useRef(onDragEnd);
-    dragStartRef.current = onDragStart;
-    dragMoveRef.current = onDragMove;
-    dragEndRef.current = onDragEnd;
-
-    const panResponder = useRef(
-        PanResponder.create({
-            // Small slop so taps/hovers are unaffected.
-            onMoveShouldSetPanResponder: (_e, g) =>
-                Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
-            onPanResponderGrant: () => dragStartRef.current(),
-            onPanResponderMove: (_e, g) => dragMoveRef.current(g.dx, g.dy),
-            onPanResponderRelease: () => dragEndRef.current(),
-            onPanResponderTerminate: () => dragEndRef.current(),
-        })
-    ).current;
-
-    return (
-        <View
-            style={[
-                styles.elementBox,
-                { left, top, width, height },
-                hovered && styles.elementBoxHovered,
-            ]}
-            onPointerEnter={onHoverIn}
-            onPointerLeave={onHoverOut}
-            // React Native Web maps this to the DOM `contextmenu` event (right-click).
-            // It's not in the `react-native` type defs, hence the spread cast.
-            {...({ onContextMenu } as Record<string, any>)}
-        >
-            {/* Top-left corner icon: "T" for text, image icon for obj */}
-            <View
-                style={[
-                    styles.elementIcon,
-                    isText ? styles.elementIconText : styles.elementIconObj,
-                ]}
-            >
-                {isText ? (
-                    <Text style={styles.elementIconChar}>T</Text>
-                ) : (
-                    <ImageIcon size={14} color="#FFFFFF" />
-                )}
-            </View>
-
-            {isText ? (
-                <Text style={styles.elementTextContent}>{element.text}</Text>
-            ) : (
-                <Text style={styles.elementDescText}>{element.desc}</Text>
-            )}
-
-            {/* Move surface: inset from the box edges. Rendered above the
-                icon/label (transparent) but below the resize handles, so
-                corner drags are claimed by the handles. */}
-            <View
-                style={[
-                    styles.elementMoveArea,
-                    { top: moveInset, left: moveInset, right: moveInset, bottom: moveInset },
-                ]}
-                {...panResponder.panHandlers}
-            />
-
-            {/* Corner resize handles */}
-            {(['nw', 'ne', 'sw', 'se'] as Corner[]).map((corner) => (
-                <ResizeHandle
-                    key={corner}
-                    corner={corner}
-                    onResizeStart={() => onResizeStart(corner)}
-                    onResizeMove={onResizeMove}
-                    onResizeEnd={onResizeEnd}
-                />
-            ))}
-        </View>
-    );
-};
-
-/**
- * A corner handle for resizing its parent element box. Nested inside the
- * box's move responder; as a descendant it wins the gesture contest.
- */
-const ResizeHandle = ({
-    corner,
-    onResizeStart,
-    onResizeMove,
-    onResizeEnd,
-}: {
-    corner: Corner;
-    onResizeStart: () => void;
-    onResizeMove: (dxPx: number, dyPx: number) => void;
-    onResizeEnd: () => void;
-}) => {
-    const startRef = useRef(onResizeStart);
-    const moveRef = useRef(onResizeMove);
-    const endRef = useRef(onResizeEnd);
-    startRef.current = onResizeStart;
-    moveRef.current = onResizeMove;
-    endRef.current = onResizeEnd;
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onMoveShouldSetPanResponder: (_e, g) =>
-                Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2,
-            onPanResponderGrant: () => startRef.current(),
-            onPanResponderMove: (_e, g) => moveRef.current(g.dx, g.dy),
-            onPanResponderRelease: () => endRef.current(),
-            onPanResponderTerminate: () => endRef.current(),
-        })
-    ).current;
-
-    return (
-        <View
-            style={[styles.resizeHandle, styles[`resizeHandle_${corner}`]]}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            {...panResponder.panHandlers}
-        />
-    );
-};
+/** Minimum drag distance in canvas pixels for a create-drag to count (vs a click). */
+const MIN_CREATE_DRAG_PX = 12;
 
 /**
  * A small component to display a keyword as a stylized tag.
@@ -245,13 +53,6 @@ const Tag = ({ text }: { text: string }) => {
         </View>
     );
 };
-
-/**
- * A component to display a color as a circular swatch.
- */
-const ColorSwatch = ({ color }: { color: string }) => (
-    <View style={[styles.swatch, { backgroundColor: color }]} />
-);
 
 export default function DesignScreen() {
     const router = useRouter();
@@ -283,6 +84,19 @@ export default function DesignScreen() {
     const [editing, setEditing] = useState<{ index: number; field: 'desc' | 'text' } | null>(null);
     // The value being edited in the dialog's input.
     const [draft, setDraft] = useState('');
+    // Active toolbar tool: drag on the canvas to create an element of this type.
+    const [activeTool, setActiveTool] = useState<'text' | 'obj' | null>(null);
+    // Live rectangle (canvas px) of the element currently being created by dragging.
+    const [createDraft, setCreateDraft] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+    // Anchor of the in-flight create-drag: start point in canvas px plus the
+    // canvas origin in viewport px (for converting raw window pointer events).
+    const createBaseRef = useRef<{ xPx: number; yPx: number; rectLeft: number; rectTop: number; type: 'text' | 'obj' } | null>(null);
+    // When a generate attempt was blocked on empty elements, keep their boxes
+    // highlighted (red) until the user fills them in.
+    const [showEmptyHighlight, setShowEmptyHighlight] = useState(false);
+    // Toggle driving the red border's blink; only animates during the flash.
+    const [flashOn, setFlashOn] = useState(false);
+    const flashTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
         try {
@@ -408,7 +222,7 @@ export default function DesignScreen() {
         resizeBaseRef.current = null;
     };
 
-    // Right-click an element box: open the edit context menu at the cursor,
+    // Right-click an element box: open the context menu at the cursor,
     // clamped so the menu stays inside the viewport.
     const openContextMenu = (index: number, e: any) => {
         // Suppress the browser's native context menu.
@@ -418,7 +232,9 @@ export default function DesignScreen() {
         const element = refinedData?.compositional_deconstruction.elements[index];
         const itemH = 36;
         const menuW = 180;
-        const menuH = 12 + itemH * (element?.type === 'text' ? 2 : 1);
+        // Edit description (+ Edit text for text elements) plus Delete.
+        const itemCount = (element?.type === 'text' ? 2 : 1) + 1;
+        const menuH = 12 + itemH * itemCount + 10;
         const vw = window.innerWidth || 1280;
         const vh = window.innerHeight || 800;
         setContextMenu({
@@ -456,6 +272,137 @@ export default function DesignScreen() {
         setEditing(null);
     };
 
+    // Remove the context-menu target element from the caption and close the menu.
+    const deleteElement = () => {
+        if (!contextMenu) return;
+        const { index } = contextMenu;
+        setContextMenu(null);
+        setRefinedData((prev) => {
+            if (!prev) return prev;
+            const elements = prev.compositional_deconstruction.elements.filter((_, i) => i !== index);
+            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
+        });
+    };
+
+    // Append a new (empty) element of the given type with the given bbox.
+    // It shows up on the canvas and can be filled in via the right-click menu.
+    const addElement = (type: 'text' | 'obj', bbox: [number, number, number, number]) => {
+        setRefinedData((prev) => {
+            if (!prev) return prev;
+            const element: CanvasElement = type === 'text'
+                ? { type, bbox, text: '', desc: '' }
+                : { type, bbox, desc: '' };
+            return {
+                ...prev,
+                compositional_deconstruction: {
+                    ...prev.compositional_deconstruction,
+                    elements: [...prev.compositional_deconstruction.elements, element],
+                },
+            };
+        });
+    };
+
+    // Start a create-drag on the canvas while a creation tool is active
+    // (left button only; element boxes are pointer-transparent in tool mode).
+    const handleCanvasPointerDown = (e: any) => {
+        if (!activeTool || e.button !== 0 || displaySize.width <= 0 || displaySize.height <= 0) return;
+        const rect = e.currentTarget?.getBoundingClientRect?.();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        createBaseRef.current = { xPx: x, yPx: y, rectLeft: rect.left, rectTop: rect.top, type: activeTool };
+        setCreateDraft({ left: x, top: y, width: 0, height: 0 });
+    };
+
+    // While a create-drag is in flight, track the pointer on window so the
+    // rectangle follows even when the pointer leaves the canvas.
+    const isCreating = createDraft !== null;
+    useEffect(() => {
+        if (!isCreating) return;
+        const base = createBaseRef.current;
+        if (!base) return;
+        const onMove = (ev: PointerEvent) => {
+            const x = ev.clientX - base.rectLeft;
+            const y = ev.clientY - base.rectTop;
+            setCreateDraft({
+                left: Math.min(base.xPx, x),
+                top: Math.min(base.yPx, y),
+                width: Math.abs(x - base.xPx),
+                height: Math.abs(y - base.yPx),
+            });
+        };
+        const onUp = (ev: PointerEvent) => {
+            const x = ev.clientX - base.rectLeft;
+            const y = ev.clientY - base.rectTop;
+            const wPx = Math.abs(x - base.xPx);
+            const hPx = Math.abs(y - base.yPx);
+            createBaseRef.current = null;
+            setCreateDraft(null);
+            // A plain click (no real drag) creates nothing.
+            if (wPx < MIN_CREATE_DRAG_PX || hPx < MIN_CREATE_DRAG_PX) return;
+            // Convert to a normalized (0-1000) bbox, clamped to the canvas,
+            // and enforce the minimum element size.
+            const xMin = Math.max(0, Math.round((Math.min(base.xPx, x) / displaySize.width) * 1000));
+            const yMin = Math.max(0, Math.round((Math.min(base.yPx, y) / displaySize.height) * 1000));
+            let xMax = Math.min(1000, Math.round(((Math.min(base.xPx, x) + wPx) / displaySize.width) * 1000));
+            let yMax = Math.min(1000, Math.round(((Math.min(base.yPx, y) + hPx) / displaySize.height) * 1000));
+            if (xMax - xMin < MIN_ELEMENT_SIZE) xMax = Math.min(1000, xMin + MIN_ELEMENT_SIZE);
+            if (yMax - yMin < MIN_ELEMENT_SIZE) yMax = Math.min(1000, yMin + MIN_ELEMENT_SIZE);
+            addElement(base.type, [yMin, xMin, yMax, xMax]);
+            setActiveTool(null);
+        };
+        const onCancel = () => {
+            createBaseRef.current = null;
+            setCreateDraft(null);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onCancel);
+        return () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onCancel);
+        };
+    }, [isCreating, displaySize.width, displaySize.height]);
+
+    // Escape cancels the active creation tool (and any in-flight create-drag).
+    useEffect(() => {
+        if (!activeTool) return;
+        const onKey = (ev: KeyboardEvent) => {
+            if (ev.key === 'Escape') {
+                setActiveTool(null);
+                createBaseRef.current = null;
+                setCreateDraft(null);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [activeTool]);
+
+    // Blink the empty-element highlight for a few cycles, then settle on a
+    // steady red border (showEmptyHighlight stays true until they're fixed).
+    const startFlash = () => {
+        if (flashTimerRef.current) clearInterval(flashTimerRef.current);
+        let ticks = 0;
+        const totalTicks = 6; // 3 full on/off cycles
+        setFlashOn(true);
+        flashTimerRef.current = setInterval(() => {
+            ticks += 1;
+            if (ticks >= totalTicks) {
+                if (flashTimerRef.current) clearInterval(flashTimerRef.current);
+                flashTimerRef.current = null;
+                setFlashOn(true); // settle on the bright red border
+            } else {
+                setFlashOn((v) => !v);
+            }
+        }, 320);
+    };
+
+    // Clean up the flash timer if the screen unmounts mid-blink.
+    useEffect(() => () => {
+        if (flashTimerRef.current) clearInterval(flashTimerRef.current);
+    }, []);
+
     // Load the bbox-rewrite system prompt from the public assets directory.
     async function loadRewriteSystemPrompt(): Promise<string> {
         try {
@@ -474,6 +421,19 @@ export default function DesignScreen() {
     // local Ideogram-compatible service to generate the image.
     const handleGenerate = async () => {
         if (!refinedData || isGenerating) return;
+        // No empty elements: a text element needs its text, an obj element its
+        // description. They can be filled in via the right-click menu.
+        const elements = refinedData.compositional_deconstruction.elements;
+        const emptyIndex = elements.findIndex(isEmptyElement);
+        if (emptyIndex !== -1) {
+            const empty = elements[emptyIndex];
+            const field = empty?.type === 'text' ? 'text' : 'description';
+            setGenerateError(`Element ${emptyIndex + 1} is empty — right-click it on the canvas to edit its ${field}.`);
+            // Point the user at the offending box(es) on the canvas.
+            setShowEmptyHighlight(true);
+            startFlash();
+            return;
+        }
         setIsGenerating(true);
         setGenerateError(null);
         try {
@@ -537,11 +497,23 @@ export default function DesignScreen() {
             <View style={styles.mainContent}>
                 {/* Left Sidebar: Toolbar */}
                 <View style={styles.toolbar}>
-                    <TouchableOpacity style={styles.toolButton} onPress={() => console.log('Add Text')}>
-                        <Type color="#007AFF" size={28} />
+                    <TouchableOpacity
+                        style={[styles.toolButton, activeTool === 'text' && styles.toolButtonActive]}
+                        onPress={() => {
+                            setActiveTool(activeTool === 'text' ? null : 'text');
+                            setHoveredIndex(null);
+                        }}
+                    >
+                        <Type color={activeTool === 'text' ? '#FFFFFF' : '#007AFF'} size={28} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolButton} onPress={() => console.log('Add Object')}>
-                        <ImageIcon color="#007AFF" size={28} />
+                    <TouchableOpacity
+                        style={[styles.toolButton, activeTool === 'obj' && styles.toolButtonActive]}
+                        onPress={() => {
+                            setActiveTool(activeTool === 'obj' ? null : 'obj');
+                            setHoveredIndex(null);
+                        }}
+                    >
+                        <ImageIcon color={activeTool === 'obj' ? '#FFFFFF' : '#007AFF'} size={28} />
                     </TouchableOpacity>
                 </View>
 
@@ -593,9 +565,7 @@ export default function DesignScreen() {
                             </View>
                             <View style={styles.metadataGroup}>
                                 <Text style={styles.groupLabel}>Palette</Text>
-                                <View style={styles.paletteRow}>
-                                    {palette.map((color, i) => <ColorSwatch key={`pal-${i}`} color={color} />)}
-                                </View>
+                                <ColorPalette palette={palette} onPaletteChange={setPalette} />
                             </View>
                         </ScrollView>
                     </View>
@@ -617,10 +587,17 @@ export default function DesignScreen() {
                                     width: e.nativeEvent.layout.width,
                                     height: e.nativeEvent.layout.height,
                                 })
-                            }
-                            }
+                            }}
                         >
-                            <View style={[styles.canvas, { width: displaySize.width, height: displaySize.height }]}>
+                            <View
+                                style={[
+                                    styles.canvas,
+                                    { width: displaySize.width, height: displaySize.height },
+                                    // Web: crosshair while a creation tool is armed.
+                                    (activeTool ? { cursor: 'crosshair' } : {}) as any,
+                                ]}
+                                onPointerDown={handleCanvasPointerDown}
+                            >
                                 {/* Generated image: rendered first so the element boxes overlay it */}
                                 {generatedImageUrl && (
                                     <Image
@@ -635,6 +612,9 @@ export default function DesignScreen() {
 
                                 {refinedData && refinedData.compositional_deconstruction.elements.length > 0 ? (
                                     <>
+                                        {/* Element layer: pointer-transparent while a creation
+                                            tool is active so drags start new elements. */}
+                                        <View style={styles.elementLayer} pointerEvents={activeTool ? 'none' : undefined}>
                                         {refinedData.compositional_deconstruction.elements.map((element, index) => {
                                             if (!element.bbox) return null;
                                             const geo = getElementGeometry(element);
@@ -653,9 +633,12 @@ export default function DesignScreen() {
                                                     onResizeMove={handleResizeMove}
                                                     onResizeEnd={handleResizeEnd}
                                                     onContextMenu={(e) => openContextMenu(index, e)}
+                                                    empty={showEmptyHighlight && isEmptyElement(element)}
+                                                    flashOn={flashOn}
                                                 />
                                             );
                                         })}
+                                        </View>
 
                                         {/* Floating tooltip for the hovered text element */}
                                         {(() => {
@@ -690,8 +673,32 @@ export default function DesignScreen() {
                                 ) : (
                                     <Text style={styles.canvasPlaceholderText}>Canvas Area</Text>
                                 )}
+
+                                {/* Live rectangle of the element being created by dragging */}
+                                {createDraft && (
+                                    <View
+                                        pointerEvents="none"
+                                        style={[
+                                            styles.createDraft,
+                                            {
+                                                left: createDraft.left,
+                                                top: createDraft.top,
+                                                width: createDraft.width,
+                                                height: createDraft.height,
+                                                borderColor: activeTool === 'text' ? '#FF9500' : '#007AFF',
+                                            },
+                                        ]}
+                                    />
+                                )}
                             </View>
                         </View>
+
+                        {/* Creation tool hint */}
+                        {activeTool && (
+                            <Text style={styles.toolHint}>
+                                Drag on the canvas to create a {activeTool === 'text' ? 'text' : 'object'} element · Esc to cancel
+                            </Text>
+                        )}
 
                         {/* Generate button */}
                         <View style={styles.generateRow}>
@@ -731,6 +738,10 @@ export default function DesignScreen() {
                                         <Text style={styles.contextMenuItemText}>Edit text</Text>
                                     </TouchableOpacity>
                                 )}
+                                <View style={styles.contextMenuDivider} />
+                                <TouchableOpacity style={styles.contextMenuItemDanger} onPress={deleteElement}>
+                                    <Text style={styles.contextMenuItemTextDanger}>Delete</Text>
+                                </TouchableOpacity>
                             </View>
                         );
                     })()}
@@ -796,6 +807,10 @@ const styles = StyleSheet.create({
         marginBottom: 30,
         padding: 10,
     },
+    toolButtonActive: {
+        backgroundColor: '#007AFF',
+        borderRadius: 8,
+    },
     canvasArea: {
         flex: 1,
         flexDirection: 'column',
@@ -854,18 +869,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
     },
-    paletteRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    swatch: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        marginRight: 6,
-        borderWidth: 1,
-        borderColor: '#EEE',
-    },
     backgroundContainer: {
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -908,6 +911,7 @@ const styles = StyleSheet.create({
     generateRow: {
         marginTop: 16,
         alignItems: 'center',
+        flexDirection: 'row',
     },
     generateButton: {
         backgroundColor: '#007AFF',
@@ -935,52 +939,7 @@ const styles = StyleSheet.create({
         color: '#CCC',
         fontSize: 20,
     },
-    elementBox: {
-        position: 'absolute',
-        borderWidth: 1,
-        borderColor: '#007AFF',
-        borderStyle: 'dashed',
-        backgroundColor: 'rgba(255, 255, 255, 0.7)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 6,
-    },
-    elementBoxHovered: {
-        backgroundColor: '#FFFFFF',
-    },
-    elementIcon: {
-        position: 'absolute',
-        top: 4,
-        left: 4,
-        borderRadius: 4,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    elementIconText: {
-        width: 18,
-        height: 18,
-        backgroundColor: '#FF9500',
-    },
-    elementIconObj: {
-        width: 18,
-        height: 18,
-        backgroundColor: '#007AFF',
-    },
-    elementIconChar: {
-        color: '#FFFFFF',
-        fontSize: 12,
-        fontWeight: 'bold',
-    },
-    elementTextContent: {
-        fontSize: 13,
-        color: '#333',
-        textAlign: 'center',
-    },
-    elementDescText: {
-        fontSize: 11,
-        color: '#666',
-        textAlign: 'center',
-    },
+    // Floating tooltip for the hovered text element.
     tooltip: {
         position: 'absolute',
         backgroundColor: '#333333',
@@ -999,22 +958,6 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         lineHeight: 17,
     },
-    elementMoveArea: {
-        position: 'absolute',
-    },
-    resizeHandle: {
-        position: 'absolute',
-        width: 14,
-        height: 14,
-        backgroundColor: '#FFFFFF',
-        borderWidth: 2,
-        borderColor: '#007AFF',
-        borderRadius: 3,
-    },
-    resizeHandle_nw: { top: -7, left: -7 },
-    resizeHandle_ne: { top: -7, right: -7 },
-    resizeHandle_sw: { bottom: -7, left: -7 },
-    resizeHandle_se: { bottom: -7, right: -7 },
     tooltipArrow: {
         position: 'absolute',
         width: 10,
@@ -1054,6 +997,20 @@ const styles = StyleSheet.create({
     contextMenuItemText: {
         fontSize: 14,
         color: '#333',
+    },
+    contextMenuDivider: {
+        height: 1,
+        backgroundColor: '#EEE',
+        marginVertical: 4,
+    },
+    contextMenuItemDanger: {
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+    },
+    contextMenuItemTextDanger: {
+        fontSize: 14,
+        color: '#FF3B30',
+        fontWeight: '600',
     },
     // Element field editor dialog: dimmed full-viewport backdrop with a
     // centered card.
@@ -1124,5 +1081,27 @@ const styles = StyleSheet.create({
     },
     dialogButtonDisabled: {
         backgroundColor: '#B0D4FF',
+    },
+    // Full-canvas layer holding the element boxes (pointer-transparent in tool mode).
+    elementLayer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    // Live rectangle preview while dragging out a new element.
+    createDraft: {
+        position: 'absolute',
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        backgroundColor: 'rgba(0, 122, 255, 0.08)',
+    },
+    // Hint shown below the canvas while a creation tool is armed.
+    toolHint: {
+        marginTop: 12,
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#007AFF',
     },
 });
