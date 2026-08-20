@@ -85,7 +85,7 @@ export default function IndexScreen() {
             // Pass the JSON prompt to design.tsx
             router.push({
                 pathname: '/design',
-                params: { promptData: refinedPrompt },
+                params: { promptData: refinedPrompt, size: [width, height] },
             });
         } catch (error: any) {
             Alert.alert('Error', error.message || 'Failed to generate prompt. Please try again.');
