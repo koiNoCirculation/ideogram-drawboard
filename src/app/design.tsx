@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { resolveContradictionInBBox } from './services/PromptRefiner';
 
 const IDEOGRAM_API_BASE = 'http://127.0.0.1:8000';
 const IDEOGRAM_API_KEY = ''; // leave empty if the local service handles auth
@@ -43,6 +44,31 @@ interface RefinedPrompt {
 type CanvasElement = RefinedPrompt['compositional_deconstruction']['elements'][number];
 
 /**
+ * Parse the LLM's rewritten caption, tolerating stray markdown fences or prose
+ * around the JSON object (the prompt asks for bare JSON, but be defensive).
+ * Throws if the response is not a usable caption.
+ */
+function parseRewrittenCaption(content: string): RefinedPrompt {
+    const trimmed = content.trim();
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start === -1 || end <= start) {
+        throw new Error('The bbox-rewrite model did not return a JSON caption.');
+    }
+    const parsed: any = JSON.parse(trimmed.slice(start, end + 1));
+    if (!Array.isArray(parsed?.compositional_deconstruction?.elements)) {
+        throw new Error('The rewritten caption is missing compositional_deconstruction.elements.');
+    }
+    return parsed as RefinedPrompt;
+}
+
+/** Which corner of the box a resize gesture started from. */
+type Corner = 'nw' | 'ne' | 'sw' | 'se';
+
+/** Minimum element size in normalized (0-1000) units, so corners can't cross. */
+const MIN_ELEMENT_SIZE = 20;
+
+/**
  * A component to render a single parsed element (obj or text) on the canvas,
  * positioned by its normalized (0-1000) bounding box. Draggable: reports pixel
  * deltas to the parent, which updates the bbox in the JSON prompt.
@@ -59,6 +85,9 @@ const ElementBox = ({
     onDragStart,
     onDragMove,
     onDragEnd,
+    onResizeStart,
+    onResizeMove,
+    onResizeEnd,
 }: {
     element: CanvasElement;
     left: number;
@@ -71,8 +100,15 @@ const ElementBox = ({
     onDragStart: () => void;
     onDragMove: (dxPx: number, dyPx: number) => void;
     onDragEnd: () => void;
+    onResizeStart: (corner: Corner) => void;
+    onResizeMove: (dxPx: number, dyPx: number) => void;
+    onResizeEnd: () => void;
 }) => {
     const isText = element.type === 'text';
+
+    // Shrink the move surface away from the edges so drags starting near a
+    // corner go to the resize handles instead of moving the element.
+    const moveInset = Math.min(14, Math.max(0, Math.floor(Math.min(width, height) / 4)));
 
     // The PanResponder is created once, so route through refs to always call
     // the latest parent handlers (they capture displaySize at render time).
@@ -104,7 +140,6 @@ const ElementBox = ({
             ]}
             onPointerEnter={onHoverIn}
             onPointerLeave={onHoverOut}
-            {...panResponder.panHandlers}
         >
             {/* Top-left corner icon: "T" for text, image icon for obj */}
             <View
@@ -125,7 +160,71 @@ const ElementBox = ({
             ) : (
                 <Text style={styles.elementDescText}>{element.desc}</Text>
             )}
+
+            {/* Move surface: inset from the box edges. Rendered above the
+                icon/label (transparent) but below the resize handles, so
+                corner drags are claimed by the handles. */}
+            <View
+                style={[
+                    styles.elementMoveArea,
+                    { top: moveInset, left: moveInset, right: moveInset, bottom: moveInset },
+                ]}
+                {...panResponder.panHandlers}
+            />
+
+            {/* Corner resize handles */}
+            {(['nw', 'ne', 'sw', 'se'] as Corner[]).map((corner) => (
+                <ResizeHandle
+                    key={corner}
+                    corner={corner}
+                    onResizeStart={() => onResizeStart(corner)}
+                    onResizeMove={onResizeMove}
+                    onResizeEnd={onResizeEnd}
+                />
+            ))}
         </View>
+    );
+};
+
+/**
+ * A corner handle for resizing its parent element box. Nested inside the
+ * box's move responder; as a descendant it wins the gesture contest.
+ */
+const ResizeHandle = ({
+    corner,
+    onResizeStart,
+    onResizeMove,
+    onResizeEnd,
+}: {
+    corner: Corner;
+    onResizeStart: () => void;
+    onResizeMove: (dxPx: number, dyPx: number) => void;
+    onResizeEnd: () => void;
+}) => {
+    const startRef = useRef(onResizeStart);
+    const moveRef = useRef(onResizeMove);
+    const endRef = useRef(onResizeEnd);
+    startRef.current = onResizeStart;
+    moveRef.current = onResizeMove;
+    endRef.current = onResizeEnd;
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponder: (_e, g) =>
+                Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2,
+            onPanResponderGrant: () => startRef.current(),
+            onPanResponderMove: (_e, g) => moveRef.current(g.dx, g.dy),
+            onPanResponderRelease: () => endRef.current(),
+            onPanResponderTerminate: () => endRef.current(),
+        })
+    ).current;
+
+    return (
+        <View
+            style={[styles.resizeHandle, styles[`resizeHandle_${corner}`]]}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            {...panResponder.panHandlers}
+        />
     );
 };
 
@@ -166,6 +265,9 @@ export default function DesignScreen() {
     // Base bbox captured when a drag starts; live moves are computed from it so
     // the element's moving position never feeds back into the gesture delta.
     const dragBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number] } | null>(null);
+    // Base bbox and corner captured when a resize starts; live moves are
+    // computed from it so the box's growing edges never feed back into the delta.
+    const resizeBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number]; corner: Corner } | null>(null);
     const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
@@ -219,12 +321,13 @@ export default function DesignScreen() {
         };
     };
 
-    // Clamp a normalized (0-1000) bbox so it stays fully inside the canvas.
+    // Clamp a normalized (0-1000) bbox so it stays fully inside the canvas,
+    // rounding the result to integer coordinates.
     const clampBbox = (bbox: [number, number, number, number]): [number, number, number, number] => {
         const [yMin, xMin, yMax, xMax] = bbox;
         const x = Math.min(Math.max(xMin, 0), Math.max(1000 - (xMax - xMin), 0));
         const y = Math.min(Math.max(yMin, 0), Math.max(1000 - (yMax - yMin), 0));
-        return [y, x, y + (yMax - yMin), x + (xMax - xMin)];
+        return [Math.round(y), Math.round(x), Math.round(y + (yMax - yMin)), Math.round(x + (xMax - xMin))];
     };
 
     const handleDragStart = (index: number) => {
@@ -255,15 +358,93 @@ export default function DesignScreen() {
         dragBaseRef.current = null;
     };
 
-    // Call the local Ideogram-compatible service to generate the image.
+    const handleResizeStart = (index: number, corner: Corner) => {
+        const element = refinedData?.compositional_deconstruction.elements[index];
+        if (!element?.bbox) return;
+        resizeBaseRef.current = { index, baseBbox: element.bbox, corner };
+    };
+
+    // Live-update the resized element's bbox: extend/shift the edges controlled
+    // by the grabbed corner, clamped to the canvas and a minimum element size.
+    const handleResizeMove = (dxPx: number, dyPx: number) => {
+        const resize = resizeBaseRef.current;
+        if (!resize || displaySize.width <= 0 || displaySize.height <= 0) return;
+        const dx = (dxPx / displaySize.width) * 1000;
+        const dy = (dyPx / displaySize.height) * 1000;
+        const [yMin, xMin, yMax, xMax] = resize.baseBbox;
+        const { corner } = resize;
+        const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+        let nxMin = xMin, nxMax = xMax, nyMin = yMin, nyMax = yMax;
+        if (corner === 'nw' || corner === 'sw') nxMin = clamp(xMin + dx, 0, xMax - MIN_ELEMENT_SIZE);
+        if (corner === 'ne' || corner === 'se') nxMax = clamp(xMax + dx, xMin + MIN_ELEMENT_SIZE, 1000);
+        if (corner === 'nw' || corner === 'ne') nyMin = clamp(yMin + dy, 0, yMax - MIN_ELEMENT_SIZE);
+        if (corner === 'sw' || corner === 'se') nyMax = clamp(yMax + dy, yMin + MIN_ELEMENT_SIZE, 1000);
+        const newBbox: [number, number, number, number] = [
+            Math.round(nyMin), Math.round(nxMin), Math.round(nyMax), Math.round(nxMax),
+        ];
+        const { index } = resize;
+        setRefinedData((prev) => {
+            if (!prev) return prev;
+            const elements = prev.compositional_deconstruction.elements.map((el, i) =>
+                i === index ? { ...el, bbox: newBbox } : el
+            );
+            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
+        });
+    };
+
+    const handleResizeEnd = () => {
+        resizeBaseRef.current = null;
+    };
+
+    // Load the bbox-rewrite system prompt from the public assets directory.
+    async function loadRewriteSystemPrompt(): Promise<string> {
+        try {
+            const response = await fetch('/system_prompt_rewrite_adapt_bbox.txt');
+            if (!response.ok) {
+                throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
+            }
+            return await response.text();
+        } catch (error) {
+            console.error('[loadRewriteSystemPrompt Error]:', error);
+            throw new Error('Could not load the bbox-rewrite system prompt. Please ensure assets are correctly bundled.');
+        }
+    }
+
+    // Rewrite element descs (to match the user-modified bboxes), then call the
+    // local Ideogram-compatible service to generate the image.
     const handleGenerate = async () => {
         if (!refinedData || isGenerating) return;
         setIsGenerating(true);
         setGenerateError(null);
         try {
+            // Before generating, resolve the contradiction between each
+            // element's desc and its bbox (which the user may have moved or
+            // resized on the canvas).
+            const systemPrompt = await loadRewriteSystemPrompt();
+            const rewritten = parseRewrittenCaption(
+                await resolveContradictionInBBox(systemPrompt, JSON.stringify(refinedData)),
+            );
+
+            // The model is instructed to keep every field except desc, but the
+            // bboxes on the canvas are the source of truth, so merge only the
+            // rewritten descs back into the local caption and send that.
+            const elements = refinedData.compositional_deconstruction.elements.map((element, i) => {
+                const fix = rewritten.compositional_deconstruction.elements[i];
+                if (!fix || fix.type !== element.type || typeof fix.desc !== 'string' || !fix.desc) return element;
+                return { ...element, desc: fix.desc };
+            });
+            const resolvedData: RefinedPrompt = {
+                ...refinedData,
+                compositional_deconstruction: {
+                    ...refinedData.compositional_deconstruction,
+                    elements,
+                },
+            };
+            setRefinedData(resolvedData);
+            console.log(refinedData)
             const formData = new FormData();
             // The service expects json_prompt as a plain string field, not a file upload.
-            formData.append('json_prompt', JSON.stringify(refinedData));
+            formData.append('json_prompt', JSON.stringify(resolvedData));
             formData.append('response_type', 'url');
             formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
 
@@ -408,6 +589,9 @@ export default function DesignScreen() {
                                                     onDragStart={() => handleDragStart(index)}
                                                     onDragMove={handleDragMove}
                                                     onDragEnd={handleDragEnd}
+                                                    onResizeStart={(corner) => handleResizeStart(index, corner)}
+                                                    onResizeMove={handleResizeMove}
+                                                    onResizeEnd={handleResizeEnd}
                                                 />
                                             );
                                         })}
@@ -694,6 +878,22 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         lineHeight: 17,
     },
+    elementMoveArea: {
+        position: 'absolute',
+    },
+    resizeHandle: {
+        position: 'absolute',
+        width: 14,
+        height: 14,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 2,
+        borderColor: '#007AFF',
+        borderRadius: 3,
+    },
+    resizeHandle_nw: { top: -7, left: -7 },
+    resizeHandle_ne: { top: -7, right: -7 },
+    resizeHandle_sw: { bottom: -7, left: -7 },
+    resizeHandle_se: { bottom: -7, right: -7 },
     tooltipArrow: {
         position: 'absolute',
         width: 10,
