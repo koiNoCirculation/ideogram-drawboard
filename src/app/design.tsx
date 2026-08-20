@@ -88,6 +88,7 @@ const ElementBox = ({
     onResizeStart,
     onResizeMove,
     onResizeEnd,
+    onContextMenu,
 }: {
     element: CanvasElement;
     left: number;
@@ -103,6 +104,8 @@ const ElementBox = ({
     onResizeStart: (corner: Corner) => void;
     onResizeMove: (dxPx: number, dyPx: number) => void;
     onResizeEnd: () => void;
+    /** Right-click (web) on the box: opens the edit context menu. */
+    onContextMenu: (e: any) => void;
 }) => {
     const isText = element.type === 'text';
 
@@ -140,6 +143,9 @@ const ElementBox = ({
             ]}
             onPointerEnter={onHoverIn}
             onPointerLeave={onHoverOut}
+            // React Native Web maps this to the DOM `contextmenu` event (right-click).
+            // It's not in the `react-native` type defs, hence the spread cast.
+            {...({ onContextMenu } as Record<string, any>)}
         >
             {/* Top-left corner icon: "T" for text, image icon for obj */}
             <View
@@ -271,6 +277,12 @@ export default function DesignScreen() {
     const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
+    // Right-click context menu on an element box: its index and viewport position.
+    const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
+    // Element field editor dialog: which element and which field (desc | text) is being edited.
+    const [editing, setEditing] = useState<{ index: number; field: 'desc' | 'text' } | null>(null);
+    // The value being edited in the dialog's input.
+    const [draft, setDraft] = useState('');
 
     useEffect(() => {
         try {
@@ -394,6 +406,54 @@ export default function DesignScreen() {
 
     const handleResizeEnd = () => {
         resizeBaseRef.current = null;
+    };
+
+    // Right-click an element box: open the edit context menu at the cursor,
+    // clamped so the menu stays inside the viewport.
+    const openContextMenu = (index: number, e: any) => {
+        // Suppress the browser's native context menu.
+        e?.preventDefault?.();
+        e?.nativeEvent?.preventDefault?.();
+        const point = e?.nativeEvent ?? e ?? {};
+        const element = refinedData?.compositional_deconstruction.elements[index];
+        const itemH = 36;
+        const menuW = 180;
+        const menuH = 12 + itemH * (element?.type === 'text' ? 2 : 1);
+        const vw = window.innerWidth || 1280;
+        const vh = window.innerHeight || 800;
+        setContextMenu({
+            index,
+            x: Math.min(Math.max(point.clientX ?? 0, 8), vw - menuW - 8),
+            y: Math.min(Math.max(point.clientY ?? 0, 8), vh - menuH - 8),
+        });
+    };
+
+    // Open the edit dialog for the field of the context-menu target element.
+    const openEditor = (field: 'desc' | 'text') => {
+        if (!contextMenu) return;
+        const { index } = contextMenu;
+        const element = refinedData?.compositional_deconstruction.elements[index];
+        setContextMenu(null);
+        if (!element) return;
+        setDraft(field === 'desc' ? (element.desc ?? '') : (element.text ?? ''));
+        setEditing({ index, field });
+    };
+
+    // Save the dialog's draft back into the element and close the dialog.
+    const saveEdit = () => {
+        if (!editing) return;
+        const value = draft.trim();
+        if (!value) return;
+        const { index, field } = editing;
+        setRefinedData((prev) => {
+            if (!prev) return prev;
+            const elements = prev.compositional_deconstruction.elements.map((el, i) => {
+                if (i !== index) return el;
+                return field === 'desc' ? { ...el, desc: value } : { ...el, text: value };
+            });
+            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
+        });
+        setEditing(null);
     };
 
     // Load the bbox-rewrite system prompt from the public assets directory.
@@ -592,6 +652,7 @@ export default function DesignScreen() {
                                                     onResizeStart={(corner) => handleResizeStart(index, corner)}
                                                     onResizeMove={handleResizeMove}
                                                     onResizeEnd={handleResizeEnd}
+                                                    onContextMenu={(e) => openContextMenu(index, e)}
                                                 />
                                             );
                                         })}
@@ -650,6 +711,66 @@ export default function DesignScreen() {
                     </View>
                 </View>
             </View>
+
+            {/* Right-click context menu for an element box: a transparent
+                full-viewport catcher (closes the menu on any other click)
+                plus the fixed-position menu itself. */}
+            {contextMenu && (
+                <>
+                    <View style={styles.menuBackdrop} onPointerDown={() => setContextMenu(null)} />
+                    {(() => {
+                        const element = refinedData?.compositional_deconstruction.elements[contextMenu.index];
+                        if (!element) return null;
+                        return (
+                            <View style={[styles.contextMenu, { left: contextMenu.x, top: contextMenu.y }]}>
+                                <TouchableOpacity style={styles.contextMenuItem} onPress={() => openEditor('desc')}>
+                                    <Text style={styles.contextMenuItemText}>Edit description</Text>
+                                </TouchableOpacity>
+                                {element.type === 'text' && (
+                                    <TouchableOpacity style={styles.contextMenuItem} onPress={() => openEditor('text')}>
+                                        <Text style={styles.contextMenuItemText}>Edit text</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        );
+                    })()}
+                </>
+            )}
+
+            {/* Element field editor dialog (desc or text) */}
+            {editing && (() => {
+                const element = refinedData?.compositional_deconstruction.elements[editing.index];
+                if (!element) return null;
+                const isDesc = editing.field === 'desc';
+                return (
+                    <View style={styles.dialogBackdrop} onPointerDown={() => setEditing(null)}>
+                        <View style={styles.dialogCard} onPointerDown={(e) => e.stopPropagation()}>
+                            <Text style={styles.dialogTitle}>{isDesc ? 'Edit description' : 'Edit text'}</Text>
+                            <TextInput
+                                style={styles.dialogInput}
+                                value={draft}
+                                onChangeText={setDraft}
+                                multiline
+                                textAlignVertical="top"
+                                selectTextOnFocus
+                                autoFocus
+                            />
+                            <View style={styles.dialogActions}>
+                                <TouchableOpacity style={styles.dialogCancelButton} onPress={() => setEditing(null)}>
+                                    <Text style={styles.dialogCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.dialogSaveButton, !draft.trim() && styles.dialogButtonDisabled]}
+                                    onPress={saveEdit}
+                                    disabled={!draft.trim()}
+                                >
+                                    <Text style={styles.dialogSaveText}>Save</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                );
+            })()}
         </SafeAreaView>
     );
 }
@@ -900,5 +1021,108 @@ const styles = StyleSheet.create({
         height: 10,
         backgroundColor: '#333333',
         transform: [{ rotate: '45deg' }],
+    },
+    // Right-click context menu: a transparent full-viewport catcher and the
+    // fixed-position menu rendered on top of it.
+    menuBackdrop: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 90,
+    },
+    contextMenu: {
+        position: 'fixed',
+        zIndex: 91,
+        width: 180,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        paddingVertical: 6,
+        shadowColor: '#000',
+        shadowOpacity: 0.18,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 8,
+    },
+    contextMenuItem: {
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+    },
+    contextMenuItemText: {
+        fontSize: 14,
+        color: '#333',
+    },
+    // Element field editor dialog: dimmed full-viewport backdrop with a
+    // centered card.
+    dialogBackdrop: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        zIndex: 95,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dialogCard: {
+        width: 420,
+        maxWidth: '90%',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        padding: 20,
+        zIndex: 96,
+    },
+    dialogTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 12,
+    },
+    dialogInput: {
+        minHeight: 90,
+        maxHeight: 200,
+        borderColor: '#DDD',
+        borderWidth: 1,
+        borderRadius: 6,
+        padding: 10,
+        fontSize: 14,
+        color: '#333',
+        backgroundColor: '#FAFAFA',
+    },
+    dialogActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginTop: 16,
+    },
+    dialogCancelButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        marginRight: 10,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#DDD',
+        backgroundColor: '#FFFFFF',
+    },
+    dialogCancelText: {
+        fontSize: 14,
+        color: '#555',
+    },
+    dialogSaveButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 6,
+        backgroundColor: '#007AFF',
+    },
+    dialogSaveText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
+    },
+    dialogButtonDisabled: {
+        backgroundColor: '#B0D4FF',
     },
 });
