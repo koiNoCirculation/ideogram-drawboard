@@ -52,9 +52,12 @@ export function ColorPalette({ palette, onPaletteChange }: {
             {palette.map((color, i) => (
                 <TouchableOpacity
                     key={`pal-${i}`}
-                    onPress={(e) => openEditor(i, e)}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     activeOpacity={0.7}
+                    // onPointerDown (not onPress) so we get a DOM event with a
+                    // reliable currentTarget.getBoundingClientRect to anchor the
+                    // popover below the clicked swatch. Web-only, hence the cast.
+                    {...({ onPointerDown: (e: any) => openEditor(i, e) } as any)}
                 >
                     <View style={[styles.swatch, { backgroundColor: color }, edit?.index === i && styles.swatchActive]} />
                 </TouchableOpacity>

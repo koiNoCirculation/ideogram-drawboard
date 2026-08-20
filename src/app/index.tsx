@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     Alert,
+    Image,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -10,13 +11,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { Design, loadDesigns } from './services/designStore';
 import { refine } from './services/PromptRefiner';
-
-const RECENT_DESIGNS = [
-    "A lone sailboat on calm water at sunset.",
-    "A medium-shot photograph of a barista pouring latte art in a cozy cafe",
-    "an isometric illustration of a tiny city floating in the clouds",
-];
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
 
@@ -29,6 +25,26 @@ export default function IndexScreen() {
     const [width, setWidth] = useState('1024');
     const [height, setHeight] = useState('768');
     const [isLoading, setIsLoading] = useState(false);
+    // Saved designs shown in the "recent designs" sidebar, most recent first.
+    const [designs, setDesigns] = useState<Design[]>([]);
+
+    useEffect(() => {
+        setDesigns(loadDesigns());
+    }, []);
+
+    // Re-open a saved design, restoring its prompt, canvas size, and generated
+    // image history.
+    const handleOpenDesign = (design: Design) => {
+        router.push({
+            pathname: '/design',
+            params: {
+                promptData: JSON.stringify(design.prompt),
+                size: [String(design.size.width), String(design.size.height)],
+                images: JSON.stringify(design.images),
+                id: design.id,
+            },
+        });
+    };
 
     // Synchronize width/height when preset ratio changes
     useEffect(() => {
@@ -110,15 +126,32 @@ export default function IndexScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.mainContent}>
-                {/* Left Sidebar: Recent Designs */}
+                {/* Left Sidebar: Recent Designs (saved designs, most recent first) */}
                 <View style={styles.leftSidebar}>
                     <Text style={styles.sidebarTitle}>最近的设计</Text>
                     <ScrollView style={styles.recentList}>
-                        {RECENT_DESIGNS.map((item, index) => (
-                            <TouchableOpacity key={index} style={styles.card}>
-                                <Text numberOfLines={2} style={styles.cardText}>{item}</Text>
-                            </TouchableOpacity>
-                        ))}
+                        {designs.length === 0 ? (
+                            <Text style={styles.emptyText}>还没有保存的设计</Text>
+                        ) : (
+                            designs.map((design) => {
+                                // Preview the most recently generated image (if any).
+                                const latest = design.images.length > 0 ? design.images[design.images.length - 1] : null;
+                                return (
+                                    <TouchableOpacity
+                                        key={design.id}
+                                        style={styles.card}
+                                        onPress={() => handleOpenDesign(design)}
+                                    >
+                                        {latest && (
+                                            <Image source={{ uri: latest }} style={styles.cardThumb} resizeMode="cover" />
+                                        )}
+                                        <Text numberOfLines={3} style={styles.cardText}>
+                                            {design.prompt.high_level_description}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })
+                        )}
                     </ScrollView>
                 </View>
 
@@ -220,14 +253,29 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     card: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: '#F5F5F5',
         borderRadius: 8,
-        padding: 12,
+        padding: 10,
         marginBottom: 12,
     },
+    cardThumb: {
+        width: 52,
+        height: 52,
+        borderRadius: 6,
+        marginRight: 10,
+        backgroundColor: '#E5E5E5',
+    },
     cardText: {
-        fontSize: 14,
+        flex: 1,
+        fontSize: 13,
         color: '#666',
+    },
+    emptyText: {
+        fontSize: 13,
+        color: '#999',
+        fontStyle: 'italic',
     },
     rightSection: {
         flex: 2,

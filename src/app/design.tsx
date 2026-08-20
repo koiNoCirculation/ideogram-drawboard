@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { ColorPalette } from './components/ColorPalette';
 import { Corner, ElementBox, MIN_ELEMENT_SIZE } from './components/ElementBox';
+import { Design, upsertDesign } from './services/designStore';
 import { resolveContradictionInBBox } from './services/PromptRefiner';
 import { CanvasElement, RefinedPrompt, isEmptyElement } from './types';
 
@@ -58,6 +59,15 @@ export default function DesignScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
 
+    // Stable id for this design: passed in when re-opening a saved design,
+    // otherwise freshly generated so repeated "Save"s upsert the same record.
+    const [designId] = useState<string>(() =>
+        params.id ? (params.id as string) : `design-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    );
+    // Brief "Saved" confirmation shown after a successful save.
+    const [showSaved, setShowSaved] = useState(false);
+    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const [title, setTitle] = useState('Untitled Design');
     const [aesthetics, setAesthetics] = useState("");
     const [lighting, setLighting] = useState("");
@@ -75,7 +85,11 @@ export default function DesignScreen() {
     // Base bbox and corner captured when a resize starts; live moves are
     // computed from it so the box's growing edges never feed back into the delta.
     const resizeBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number]; corner: Corner } | null>(null);
-    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+    // All generated image URLs, in generation order. The canvas background shows
+    // the latest by default; the history strip lets the user view older ones.
+    const [images, setImages] = useState<string[]>([]);
+    // Which generated image is currently shown on the canvas.
+    const [viewIndex, setViewIndex] = useState(0);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
     // Right-click context menu on an element box: its index and viewport position.
@@ -120,10 +134,20 @@ export default function DesignScreen() {
 
             const size = (params.size as string).split(",");
             setCanvasSize({ width: Number.parseInt(size[0]), height: Number.parseInt(size[1]) });
+
+            // When re-opening a saved design, restore its generated image history
+            // and show the latest one on the canvas.
+            if (params.images) {
+                const imgs = JSON.parse(params.images as string);
+                if (Array.isArray(imgs) && imgs.length > 0) {
+                    setImages(imgs);
+                    setViewIndex(imgs.length - 1);
+                }
+            }
         } catch (e) {
             console.error('Failed to parse promptData', e);
         }
-    }, [params.promptData, params.size]);
+    }, [params.promptData, params.size, params.images]);
 
 
     // Scale the requested canvas size to fit the available area, preserving aspect ratio.
@@ -398,9 +422,10 @@ export default function DesignScreen() {
         }, 320);
     };
 
-    // Clean up the flash timer if the screen unmounts mid-blink.
+    // Clean up timers if the screen unmounts mid-blink / mid-save-flash.
     useEffect(() => () => {
         if (flashTimerRef.current) clearInterval(flashTimerRef.current);
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     }, []);
 
     // Load the bbox-rewrite system prompt from the public assets directory.
@@ -484,13 +509,37 @@ export default function DesignScreen() {
             if (!url) {
                 throw new Error('No image URL in response');
             }
-            setGeneratedImageUrl(url);
+            // Append to the history and switch the canvas to the new latest image.
+            setImages((prev) => [...prev, url]);
+            setViewIndex(images.length);
         } catch (error: any) {
             setGenerateError(error?.message ?? 'Generation failed');
         } finally {
             setIsGenerating(false);
         }
     };
+
+    // Persist the current prompt + generated images as a design (the design-file
+    // framework: { prompt, images }).
+    const handleSave = () => {
+        if (!refinedData) return;
+        const design: Design = {
+            id: designId,
+            prompt: refinedData,
+            images,
+            size: { width: canvasSize.width, height: canvasSize.height },
+            updatedAt: Date.now(),
+        };
+        upsertDesign(design);
+        setShowSaved(true);
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = setTimeout(() => setShowSaved(false), 1800);
+    };
+
+    // The image shown on the canvas: the one the user selected in the history
+    // strip, defaulting to the most recently generated.
+    const shownIndex = images.length === 0 ? -1 : Math.min(viewIndex, images.length - 1);
+    const shownImage = shownIndex >= 0 ? images[shownIndex] : null;
 
     return (
         <SafeAreaView style={styles.container}>
@@ -598,10 +647,11 @@ export default function DesignScreen() {
                                 ]}
                                 onPointerDown={handleCanvasPointerDown}
                             >
-                                {/* Generated image: rendered first so the element boxes overlay it */}
-                                {generatedImageUrl && (
+                                {/* Generated image: rendered first so the element boxes overlay it.
+                                    Shows the latest image by default (see shownImage). */}
+                                {shownImage && (
                                     <Image
-                                        source={{ uri: generatedImageUrl }}
+                                        source={{ uri: shownImage }}
                                         style={[
                                             styles.generatedImage,
                                             { width: displaySize.width, height: displaySize.height },
@@ -700,8 +750,42 @@ export default function DesignScreen() {
                             </Text>
                         )}
 
-                        {/* Generate button */}
+                        {/* History of generated images: click a thumbnail to view it
+                            on the canvas (the latest is shown by default). */}
+                        {images.length > 0 && (
+                            <View style={styles.historyStrip}>
+                                <Text style={styles.historyLabel}>Generated ({images.length})</Text>
+                                <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    contentContainerStyle={styles.historyRow}
+                                >
+                                    {images.map((url, i) => (
+                                        <TouchableOpacity
+                                            key={`hist-${i}`}
+                                            onPress={() => setViewIndex(i)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Image
+                                                source={{ uri: url }}
+                                                style={[styles.historyThumb, i === shownIndex && styles.historyThumbActive]}
+                                                resizeMode="cover"
+                                            />
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        )}
+
+                        {/* Save + Generate buttons */}
                         <View style={styles.generateRow}>
+                            <TouchableOpacity
+                                style={[styles.saveButton, !refinedData && styles.saveButtonDisabled]}
+                                onPress={handleSave}
+                                disabled={!refinedData}
+                            >
+                                <Text style={styles.saveButtonText}>Save</Text>
+                            </TouchableOpacity>
                             <TouchableOpacity
                                 style={[styles.generateButton, !refinedData && styles.generateButtonDisabled]}
                                 onPress={handleGenerate}
@@ -713,6 +797,7 @@ export default function DesignScreen() {
                                     <Text style={styles.generateButtonText}>Generate</Text>
                                 )}
                             </TouchableOpacity>
+                            {showSaved && <Text style={styles.savedText}>Saved ✓</Text>}
                         </View>
                         {generateError && <Text style={styles.generateError}>{generateError}</Text>}
                     </View>
@@ -911,6 +996,7 @@ const styles = StyleSheet.create({
     generateRow: {
         marginTop: 16,
         alignItems: 'center',
+        justifyContent: 'center',
         flexDirection: 'row',
     },
     generateButton: {
@@ -930,10 +1016,67 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
     },
+    // Secondary Save button, shown to the left of Generate.
+    saveButton: {
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#007AFF',
+        paddingHorizontal: 24,
+        paddingVertical: 10,
+        marginRight: 12,
+        minWidth: 96,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FFFFFF',
+    },
+    saveButtonDisabled: {
+        borderColor: '#B0D4FF',
+        backgroundColor: '#F5F9FF',
+    },
+    saveButtonText: {
+        color: '#007AFF',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    savedText: {
+        marginLeft: 14,
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#30A46C',
+    },
     generateError: {
         marginTop: 8,
         fontSize: 13,
         color: '#E53935',
+    },
+    // Horizontal strip of generated-image thumbnails (view history).
+    historyStrip: {
+        alignSelf: 'stretch',
+        marginTop: 16,
+        marginBottom: 4,
+    },
+    historyLabel: {
+        fontSize: 11,
+        color: '#AAA',
+        textTransform: 'uppercase',
+        fontWeight: 'bold',
+        marginBottom: 6,
+    },
+    historyRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    historyThumb: {
+        width: 64,
+        height: 64,
+        borderRadius: 6,
+        marginRight: 8,
+        borderWidth: 2,
+        borderColor: '#DDD',
+        backgroundColor: '#F5F5F5',
+    },
+    historyThumbActive: {
+        borderColor: '#007AFF',
     },
     canvasPlaceholderText: {
         color: '#CCC',
