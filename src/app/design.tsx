@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Image as ImageIcon, Type } from 'lucide-react-native';
+import { Check, Image as ImageIcon, Type } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -105,6 +105,9 @@ export default function DesignScreen() {
     const [draft, setDraft] = useState('');
     // Active toolbar tool: drag on the canvas to create an element of this type.
     const [activeTool, setActiveTool] = useState<'text' | 'obj' | null>(null);
+    // "Show elements" checkbox (top-right of the canvas area): when unchecked,
+    // the prompt's element boxes are hidden from the canvas.
+    const [showElements, setShowElements] = useState(true);
     // Live rectangle (canvas px) of the element currently being created by dragging.
     const [createDraft, setCreateDraft] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     // Anchor of the in-flight create-drag: start point in canvas px plus the
@@ -667,6 +670,19 @@ export default function DesignScreen() {
 
                     {/* Canvas Placeholder */}
                     <View style={styles.canvasContainer}>
+                        {/* "Show elements" toggle, pinned to the canvas area's
+                            top-right corner: hides/shows the prompt's element boxes. */}
+                        <TouchableOpacity
+                            testID="show-elements-toggle"
+                            style={styles.showElementsToggle}
+                            onPress={() => setShowElements((v) => !v)}
+                        >
+                            <View style={[styles.checkbox, showElements && styles.checkboxChecked]}>
+                                {showElements && <Check size={11} color="#FFFFFF" />}
+                            </View>
+                            <Text style={styles.checkboxLabel}>Show elements</Text>
+                        </TouchableOpacity>
+
                         <View
                             style={styles.canvasSizer}
                             onLayout={(e) => {
@@ -700,9 +716,13 @@ export default function DesignScreen() {
 
                                 {refinedData && refinedData.compositional_deconstruction.elements.length > 0 ? (
                                     <>
-                                        {/* Element layer: pointer-transparent while a creation
-                                            tool is active so drags start new elements. */}
-                                        <View style={styles.elementLayer} pointerEvents={activeTool ? 'none' : undefined}>
+                                        {/* Element layer (hidden while "Show elements" is off):
+                                            pointer-transparent while a creation tool is active
+                                            so drags start new elements. */}
+                                        <View
+                                            style={[styles.elementLayer, !showElements && { display: 'none' }]}
+                                            pointerEvents={activeTool ? 'none' : undefined}
+                                        >
                                         {refinedData.compositional_deconstruction.elements.map((element, index) => {
                                             if (!element.bbox) return null;
                                             const geo = getElementGeometry(element);
@@ -730,7 +750,7 @@ export default function DesignScreen() {
 
                                         {/* Floating tooltip for the hovered text element */}
                                         {(() => {
-                                            if (hoveredIndex === null) return null;
+                                            if (hoveredIndex === null || !showElements) return null;
                                             const element = refinedData.compositional_deconstruction.elements[hoveredIndex];
                                             if (!element || element.type !== 'text' || !element.bbox) return null;
                                             const geo = getElementGeometry(element);
@@ -1015,6 +1035,34 @@ const styles = StyleSheet.create({
         backgroundColor: '#F0F0F0',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    // "Show elements" checkbox, pinned to the canvas area's top-right corner.
+    showElementsToggle: {
+        position: 'absolute',
+        top: 8,
+        right: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        zIndex: 5,
+    },
+    checkbox: {
+        width: 16,
+        height: 16,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#999',
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 6,
+    },
+    checkboxChecked: {
+        backgroundColor: '#007AFF',
+        borderColor: '#007AFF',
+    },
+    checkboxLabel: {
+        fontSize: 12,
+        color: '#555',
     },
     canvasSizer: {
         flex: 1,

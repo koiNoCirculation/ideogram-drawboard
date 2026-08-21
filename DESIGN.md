@@ -92,6 +92,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - `handlePaletteChange` 同时更新 UI 状态并**写回** `refinedData.style_description.color_palette`（保证生成/保存用的是用户改后的调色板）。
 
 ### 画布
+- **Show elements 复选框**：画布区右上角固定一个小复选框 + "Show elements" 标签（默认勾选）；取消勾选时所有 prompt 元素框（及悬停 tooltip）隐藏，勾选恢复。隐藏只是 `display:none`，不改动数据，且不会显示 "Canvas Area" 占位（占位仅在没有任何元素时出现）；创建工具在隐藏状态下仍可正常拖出新元素（新建元素属于 prompt 元素，同样受开关控制显隐）。
 - 画布区 `onLayout` 测得可用尺寸后，`scale = min(可用宽/逻辑宽, 可用高/逻辑高)`，画布显示尺寸 = 逻辑尺寸 × scale（保持长宽比）。
 - 背景图 = 历史中当前选中的那张（默认最新），`resizeMode=cover` 铺满画布。
 - `refinedData` 不存在时显示占位文字 "Canvas Area"。
