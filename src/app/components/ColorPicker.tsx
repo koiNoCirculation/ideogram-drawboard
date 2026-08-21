@@ -123,7 +123,7 @@ export function ColorPicker({ initialColor, onDraftChange }: {
                 onPointerDown={(e) => startDrag('sv', e)}
                 {...({ style: {
                     position: 'relative',
-                    width: 236,
+                    width: '100%',
                     height: 150,
                     borderRadius: 8,
                     overflow: 'hidden',
@@ -158,7 +158,7 @@ export function ColorPicker({ initialColor, onDraftChange }: {
                 onPointerDown={(e) => startDrag('hue', e)}
                 {...({ style: {
                     position: 'relative',
-                    width: 236,
+                    width: '100%',
                     height: 16,
                     borderRadius: 8,
                     marginTop: 10,

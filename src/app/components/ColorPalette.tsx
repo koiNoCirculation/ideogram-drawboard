@@ -4,13 +4,16 @@ import { Plus } from 'lucide-react-native';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ColorPicker } from './ColorPicker';
 
-const POPOVER_W = 264;
+const POPOVER_W = 300;
+// Rough popover height, used as a fallback before onLayout measures the real one.
+const EST_POPOVER_H = 560;
 
 /**
  * Which popover is open: "edit" (clicked an existing swatch) or "add" (clicked
  * the trailing "+" button). `index` is the swatch being edited (edit mode).
+ * `x`/`yTop`/`yBottom` are the clicked element's viewport anchor.
  */
-type EditState = { mode: 'edit' | 'add'; index: number; x: number; y: number } | null;
+type EditState = { mode: 'edit' | 'add'; index: number; x: number; yTop: number; yBottom: number } | null;
 
 /**
  * The palette: a row of color swatches followed by a "+" add button. Clicking a
@@ -25,13 +28,19 @@ export function ColorPalette({ palette, onPaletteChange }: {
     const [edit, setEdit] = useState<EditState>(null);
     // The hex currently being composed in the popover (driven by the picker).
     const [draft, setDraft] = useState('#FFFFFF');
+    // Measured popover height, for clamping it inside the viewport.
+    const [popoverH, setPopoverH] = useState(EST_POPOVER_H);
 
     // Anchor a popover below the clicked element (fall back to the pointer).
     const anchorAt = (e: any) => {
         const rect = e?.currentTarget?.getBoundingClientRect?.();
         const clientX = e?.clientX ?? e?.nativeEvent?.clientX ?? 0;
         const clientY = e?.clientY ?? e?.nativeEvent?.clientY ?? 0;
-        return { x: rect ? rect.left : clientX - 24, y: rect ? rect.bottom + 8 : clientY + 16 };
+        return {
+            x: rect ? rect.left : clientX - 24,
+            yTop: rect ? rect.top : clientY - 12,
+            yBottom: rect ? rect.bottom : clientY,
+        };
     };
 
     // Open the picker to edit an existing swatch.
@@ -73,7 +82,15 @@ export function ColorPalette({ palette, onPaletteChange }: {
 
     const isEdit = edit?.mode === 'edit';
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
-    const popoverLeft = edit ? Math.min(Math.max(edit.x, 8), vw - POPOVER_W - 8) : 0;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+    // Clamp horizontally so the popover never spills past the left/right edges.
+    const popoverLeft = edit ? Math.min(Math.max(edit.x, 8), Math.max(8, vw - POPOVER_W - 8)) : 0;
+    // Prefer opening below the swatch; flip above if it would overflow the bottom.
+    const belowTop = edit ? edit.yBottom + 8 : 0;
+    const aboveTop = edit ? edit.yTop - popoverH - 8 : 0;
+    const popoverTop = edit
+        ? (belowTop + popoverH > vh - 8 ? Math.max(8, aboveTop) : belowTop)
+        : 0;
 
     // The editor popover + backdrop. Rendered into document.body (a portal) so
     // it is not clipped/stacked inside the horizontal metadata ScrollView the
@@ -85,7 +102,8 @@ export function ColorPalette({ palette, onPaletteChange }: {
             <View style={styles.backdrop} onPointerDown={close} />
             <View
                 testID="color-picker-popover"
-                style={[styles.popover, { left: popoverLeft, top: edit.y }]}
+                onLayout={(e) => setPopoverH(e.nativeEvent.layout.height)}
+                style={[styles.popover, { left: popoverLeft, top: popoverTop }]}
                 onPointerDown={(e) => e.stopPropagation()}
             >
                 <Text style={styles.popoverTitle}>{isEdit ? 'Edit color' : 'Add color'}</Text>
@@ -222,7 +240,7 @@ const styles = StyleSheet.create({
         marginTop: 14,
     },
     btn: {
-        paddingHorizontal: 14,
+        paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: 6,
         alignItems: 'center',
@@ -236,7 +254,7 @@ const styles = StyleSheet.create({
     },
     btnPrimaryText: {
         color: '#FFFFFF',
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
     },
     btnDanger: {
@@ -246,7 +264,7 @@ const styles = StyleSheet.create({
     },
     btnDangerText: {
         color: '#FF3B30',
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
     },
     btnGhost: {
@@ -256,6 +274,6 @@ const styles = StyleSheet.create({
     },
     btnGhostText: {
         color: '#555',
-        fontSize: 14,
+        fontSize: 13,
     },
 });

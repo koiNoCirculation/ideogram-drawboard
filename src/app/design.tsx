@@ -581,7 +581,7 @@ export default function DesignScreen() {
 
                     {/* Metadata Bar: Styled Tags and Color Swatches */}
                     <View style={styles.metadataContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScroll} contentContainerStyle={styles.scrollContent}>
                             <View style={styles.metadataGroup}>
                                 <Text style={styles.groupLabel}>Aesthetics</Text>
                                 <View style={styles.tagRow}>
@@ -612,11 +612,13 @@ export default function DesignScreen() {
                                     <Tag text={medium} />
                                 </View>
                             </View>
-                            <View style={styles.metadataGroup}>
-                                <Text style={styles.groupLabel}>Palette</Text>
-                                <ColorPalette palette={palette} onPaletteChange={setPalette} />
-                            </View>
                         </ScrollView>
+
+                        {/* Palette pinned on the right: always visible, never scrolled off. */}
+                        <View style={styles.paletteGroup}>
+                            <Text style={styles.groupLabel}>Palette</Text>
+                            <ColorPalette palette={palette} onPaletteChange={setPalette} />
+                        </View>
                     </View>
 
                     {/* Background Info */}
@@ -920,13 +922,26 @@ const styles = StyleSheet.create({
     },
     metadataContainer: {
         height: 85,
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: '#FDFDFD',
         borderBottomWidth: 1,
         borderBottomColor: '#EEEEEE',
     },
+    tagScroll: {
+        flex: 1,
+    },
     scrollContent: {
         paddingHorizontal: 16,
         alignItems: 'center',
+    },
+    paletteGroup: {
+        marginLeft: 8,
+        marginRight: 16,
+        paddingLeft: 16,
+        borderLeftWidth: 1,
+        borderLeftColor: '#EEEEEE',
+        justifyContent: 'center',
     },
     metadataGroup: {
         marginRight: 24,
