@@ -93,9 +93,8 @@ export function ColorPalette({ palette, onPaletteChange }: {
         : 0;
 
     // The editor popover + backdrop. Rendered into document.body (a portal) so
-    // it is not clipped/stacked inside the horizontal metadata ScrollView the
-    // swatches live in — the popover is position:fixed and must be relative to
-    // the real viewport.
+    // it is not clipped/stacked inside the metadata bar the swatches live in —
+    // the popover is position:fixed and must be relative to the real viewport.
     const overlay = edit && (
         <>
             {/* Transparent full-viewport catcher: closes on outside click. */}
@@ -180,6 +179,7 @@ export function ColorPalette({ palette, onPaletteChange }: {
 const styles = StyleSheet.create({
     row: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
     },
     swatch: {
@@ -187,6 +187,7 @@ const styles = StyleSheet.create({
         height: 24,
         borderRadius: 12,
         marginRight: 6,
+        marginBottom: 6,
         borderWidth: 1,
         borderColor: '#EEE',
     },

@@ -15,6 +15,7 @@ import {
 import { ColorPalette } from './components/ColorPalette';
 import { Corner, ElementBox, MIN_ELEMENT_SIZE } from './components/ElementBox';
 import { Design, upsertDesign } from './services/designStore';
+import { normalizePromptForIdeogram } from './services/IdeogramPrompt';
 import { resolveContradictionInBBox } from './services/PromptRefiner';
 import { CanvasElement, RefinedPrompt, isEmptyElement } from './types';
 
@@ -488,8 +489,10 @@ export default function DesignScreen() {
             setRefinedData(resolvedData);
             console.log(refinedData)
             const formData = new FormData();
-            // The service expects json_prompt as a plain string field, not a file upload.
-            formData.append('json_prompt', JSON.stringify(resolvedData));
+            // The service expects json_prompt as a plain string field, not a file
+            // upload. Normalize first so style_description carries exactly one
+            // of photo/art_style, in the key order Ideogram 4.0 expects.
+            formData.append('json_prompt', JSON.stringify(normalizePromptForIdeogram(resolvedData)));
             formData.append('response_type', 'url');
             formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
 
@@ -519,13 +522,22 @@ export default function DesignScreen() {
         }
     };
 
+    // Palette edits update the display state and write back into the prompt,
+    // so the swatches the user composes are what gets generated/saved.
+    const handlePaletteChange = (colors: string[]) => {
+        setPalette(colors);
+        setRefinedData((prev) => prev
+            ? { ...prev, style_description: { ...(prev.style_description ?? {}), color_palette: colors } }
+            : prev);
+    };
+
     // Persist the current prompt + generated images as a design (the design-file
     // framework: { prompt, images }).
     const handleSave = () => {
         if (!refinedData) return;
         const design: Design = {
             id: designId,
-            prompt: refinedData,
+            prompt: normalizePromptForIdeogram(refinedData),
             images,
             size: { width: canvasSize.width, height: canvasSize.height },
             updatedAt: Date.now(),
@@ -579,45 +591,47 @@ export default function DesignScreen() {
                         <View style={styles.spacer} />
                     </View>
 
-                    {/* Metadata Bar: Styled Tags and Color Swatches */}
+                    {/* Metadata Bar: six sections in one row, each capped at
+                        20% of the row width; tags/swatches wrap inside a
+                        section instead of scrolling it off-screen. */}
                     <View style={styles.metadataContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScroll} contentContainerStyle={styles.scrollContent}>
-                            <View style={styles.metadataGroup}>
-                                <Text style={styles.groupLabel}>Aesthetics</Text>
-                                <View style={styles.tagRow}>
-                                    {aesthetics.split(',').map((val, i) => <Tag key={`aes-${i}`} text={val} />)}
-                                </View>
+                        <View style={styles.metadataGroup}>
+                            <Text style={styles.groupLabel}>Aesthetics</Text>
+                            <View style={styles.tagRow}>
+                                {aesthetics.split(',').map((val, i) => <Tag key={`aes-${i}`} text={val} />)}
                             </View>
-                            <View style={styles.metadataGroup}>
-                                <Text style={styles.groupLabel}>Lighting</Text>
-                                <View style={styles.tagRow}>
-                                    {lighting.split(',').map((val, i) => <Tag key={`light-${i}`} text={val} />)}
-                                </View>
+                        </View>
+                        <View style={styles.metadataGroup}>
+                            <Text style={styles.groupLabel}>Lighting</Text>
+                            <View style={styles.tagRow}>
+                                {lighting.split(',').map((val, i) => <Tag key={`light-${i}`} text={val} />)}
                             </View>
-                            <View style={artStyle === "" ? { ...styles.metadataGroup, display: "none" } : styles.metadataGroup}>
+                        </View>
+                        {artStyle !== "" && (
+                            <View style={styles.metadataGroup}>
                                 <Text style={styles.groupLabel}>Art Style</Text>
                                 <View style={styles.tagRow}>
                                     {artStyle.split(' ').map((val, i) => <Tag key={`style-${i}`} text={val} />)}
                                 </View>
                             </View>
-                            <View style={photo === "" ? { ...styles.metadataGroup, display: "none" } : styles.metadataGroup}>
+                        )}
+                        {photo !== "" && (
+                            <View style={styles.metadataGroup}>
                                 <Text style={styles.groupLabel}>Photo</Text>
                                 <View style={styles.tagRow}>
-                                    {photo.split(',').map((val, i) => <Tag key={`style-${i}`} text={val} />)}
+                                    {photo.split(',').map((val, i) => <Tag key={`photo-${i}`} text={val} />)}
                                 </View>
                             </View>
-                            <View style={styles.metadataGroup}>
-                                <Text style={styles.groupLabel}>Medium</Text>
-                                <View style={styles.tagRow}>
-                                    <Tag text={medium} />
-                                </View>
+                        )}
+                        <View style={styles.metadataGroup}>
+                            <Text style={styles.groupLabel}>Medium</Text>
+                            <View style={styles.tagRow}>
+                                <Tag text={medium} />
                             </View>
-                        </ScrollView>
-
-                        {/* Palette pinned on the right: always visible, never scrolled off. */}
-                        <View style={styles.paletteGroup}>
+                        </View>
+                        <View style={styles.metadataGroup}>
                             <Text style={styles.groupLabel}>Palette</Text>
-                            <ColorPalette palette={palette} onPaletteChange={setPalette} />
+                            <ColorPalette palette={palette} onPaletteChange={handlePaletteChange} />
                         </View>
                     </View>
 
@@ -921,31 +935,22 @@ const styles = StyleSheet.create({
         width: 40,
     },
     metadataContainer: {
-        height: 85,
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         backgroundColor: '#FDFDFD',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 12,
         borderBottomWidth: 1,
         borderBottomColor: '#EEEEEE',
     },
-    tagScroll: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingHorizontal: 16,
-        alignItems: 'center',
-    },
-    paletteGroup: {
-        marginLeft: 8,
-        marginRight: 16,
-        paddingLeft: 16,
-        borderLeftWidth: 1,
-        borderLeftColor: '#EEEEEE',
-        justifyContent: 'center',
-    },
+    // One metadata section (Aesthetics / Lighting / Art Style / Photo /
+    // Medium / Palette): an equal share of the row, capped at 20% of its
+    // width, with content wrapping inside the section.
     metadataGroup: {
+        flex: 1,
+        maxWidth: '20%',
         marginRight: 24,
-        justifyContent: 'center',
     },
     groupLabel: {
         fontSize: 10,
@@ -960,6 +965,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 4,
         marginHorizontal: 2,
+        marginBottom: 4,
     },
     tagText: {
         fontSize: 12,
