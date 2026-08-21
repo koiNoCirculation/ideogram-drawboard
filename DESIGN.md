@@ -117,7 +117,8 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### 生成（Generate）
 1. **空元素校验**：任一元素为空（text 无 text / obj 无 desc）→ 阻止生成，显示错误「Element N is empty — right-click it on the canvas to edit its text/description」，并对空元素红框闪烁（3 个亮灭周期后常亮，直到修复）。
-2. **bbox 改写**：读 `system_prompt_rewrite_adapt_bbox.txt`，把当前 `refinedData` JSON 发给 `resolveContradictionInBBox`，LLM 只改写各元素 `desc` 中与用户移动/缩放后 bbox 矛盾的位置描述，其余字段保持不变。
+2. **bbox 改写（按需）**：仅当用户移动/缩放过元素框时才执行（`bboxEditedRef` 标记：拖动/缩放后 clamp 结果与手势起点 bbox 不同才置位；加载 promptData 时复位；重写合并成功后复位，未再编辑则后续生成继续跳过；生成进行中若又拖了框会重新置位）。未编辑过画布时直接跳过这次 LLM 调用。执行时读 `system_prompt_rewrite_adapt_bbox.txt`，把当前 `refinedData` JSON 发给 `resolveContradictionInBBox`，LLM 只改写各元素 `desc` 中与用户移动/缩放后 bbox 矛盾的位置描述，其余字段保持不变。
+   重置时机刻意放在**合并成功之后**：重写调用失败或返回非法 JSON 时保留标记，下次 Generate 自动重试；重写成功但生成 API 失败也不需重写（desc 已与当前 bbox 一致且已写回 `refinedData`）。
 3. **合并**：只把改写回来的 `desc` 逐个元素合并回本地 caption（要求 index 对应、type 相同、desc 为非空字符串，否则保留原元素）——画布 bbox 永远是唯一事实来源。
 4. **规范化**：`normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
 5. **结果**：取 `data[0].url` 追加进 `images` 并把画布切到新图；失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。

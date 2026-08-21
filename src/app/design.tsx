@@ -86,6 +86,10 @@ export default function DesignScreen() {
     // Base bbox and corner captured when a resize starts; live moves are
     // computed from it so the box's growing edges never feed back into the delta.
     const resizeBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number]; corner: Corner } | null>(null);
+    // True once the user has moved or resized a box after the caption loaded —
+    // the only thing that can put an element's desc at odds with its bbox, and
+    // the only case where the generate flow needs the LLM desc-rewrite.
+    const bboxEditedRef = useRef(false);
     // All generated image URLs, in generation order. The canvas background shows
     // the latest by default; the history strip lets the user view older ones.
     const [images, setImages] = useState<string[]>([]);
@@ -118,6 +122,9 @@ export default function DesignScreen() {
             const parsed = JSON.parse(params.promptData as string);
             console.log(parsed)
             setRefinedData(parsed);
+            // A freshly loaded caption's descs match its bboxes: no rewrite
+            // needed until the user moves or resizes a box.
+            bboxEditedRef.current = false;
 
             // Use the high level description as the initial title
             if (parsed.high_level_description) {
@@ -195,6 +202,9 @@ export default function DesignScreen() {
         const dy = (dyPx / displaySize.height) * 1000;
         const [yMin, xMin, yMax, xMax] = drag.baseBbox;
         const clamped = clampBbox([yMin + dy, xMin + dx, yMax + dy, xMax + dx]);
+        // Only a real change (post-clamp) counts as an edit — drags that
+        // no-op against the canvas edge keep the descs valid.
+        if (clamped.some((v, i) => v !== drag.baseBbox[i])) bboxEditedRef.current = true;
         const { index } = drag;
         setRefinedData((prev) => {
             if (!prev) return prev;
@@ -233,6 +243,9 @@ export default function DesignScreen() {
         const newBbox: [number, number, number, number] = [
             Math.round(nyMin), Math.round(nxMin), Math.round(nyMax), Math.round(nxMax),
         ];
+        // Same as the drag path: mark edited only when the clamped bbox
+        // actually changed.
+        if (newBbox.some((v, i) => v !== resize.baseBbox[i])) bboxEditedRef.current = true;
         const { index } = resize;
         setRefinedData((prev) => {
             if (!prev) return prev;
@@ -463,36 +476,45 @@ export default function DesignScreen() {
         setIsGenerating(true);
         setGenerateError(null);
         try {
-            // Before generating, resolve the contradiction between each
-            // element's desc and its bbox (which the user may have moved or
-            // resized on the canvas).
-            const systemPrompt = await loadRewriteSystemPrompt();
-            const rewritten = parseRewrittenCaption(
-                await resolveContradictionInBBox(systemPrompt, JSON.stringify(refinedData)),
-            );
+            // Only when the user actually moved or resized a box can descs be
+            // at odds with bboxes — unedited designs skip the extra LLM call.
+            let dataToGenerate = refinedData;
+            if (bboxEditedRef.current) {
+                // Resolve the contradiction between each element's desc and its
+                // bbox (which the user moved or resized on the canvas).
+                const systemPrompt = await loadRewriteSystemPrompt();
+                const rewritten = parseRewrittenCaption(
+                    await resolveContradictionInBBox(systemPrompt, JSON.stringify(refinedData)),
+                );
 
-            // The model is instructed to keep every field except desc, but the
-            // bboxes on the canvas are the source of truth, so merge only the
-            // rewritten descs back into the local caption and send that.
-            const elements = refinedData.compositional_deconstruction.elements.map((element, i) => {
-                const fix = rewritten.compositional_deconstruction.elements[i];
-                if (!fix || fix.type !== element.type || typeof fix.desc !== 'string' || !fix.desc) return element;
-                return { ...element, desc: fix.desc };
-            });
-            const resolvedData: RefinedPrompt = {
-                ...refinedData,
-                compositional_deconstruction: {
-                    ...refinedData.compositional_deconstruction,
-                    elements,
-                },
-            };
-            setRefinedData(resolvedData);
-            console.log(refinedData)
+                // The model is instructed to keep every field except desc, but
+                // the bboxes on the canvas are the source of truth, so merge
+                // only the rewritten descs back into the local caption and
+                // send that.
+                const elements = refinedData.compositional_deconstruction.elements.map((element, i) => {
+                    const fix = rewritten.compositional_deconstruction.elements[i];
+                    if (!fix || fix.type !== element.type || typeof fix.desc !== 'string' || !fix.desc) return element;
+                    return { ...element, desc: fix.desc };
+                });
+                const resolvedData: RefinedPrompt = {
+                    ...refinedData,
+                    compositional_deconstruction: {
+                        ...refinedData.compositional_deconstruction,
+                        elements,
+                    },
+                };
+                dataToGenerate = resolvedData;
+                setRefinedData(resolvedData);
+                // The descs now match the current bboxes; don't rewrite again
+                // until the next box edit.
+                bboxEditedRef.current = false;
+            }
+            console.log(dataToGenerate)
             const formData = new FormData();
             // The service expects json_prompt as a plain string field, not a file
             // upload. Normalize first so style_description carries exactly one
             // of photo/art_style, in the key order Ideogram 4.0 expects.
-            formData.append('json_prompt', JSON.stringify(normalizePromptForIdeogram(resolvedData)));
+            formData.append('json_prompt', JSON.stringify(normalizePromptForIdeogram(dataToGenerate)));
             formData.append('response_type', 'url');
             formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
 
