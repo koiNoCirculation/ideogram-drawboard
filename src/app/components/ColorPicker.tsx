@@ -118,6 +118,7 @@ export function ColorPicker({ initialColor, onDraftChange }: {
                 a white (left) and black (bottom) gradient laid over it. */}
             <View
                 ref={svRef}
+                testID="color-sv-plane"
                 onLayout={(e) => setPlaneSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
                 onPointerDown={(e) => startDrag('sv', e)}
                 {...({ style: {

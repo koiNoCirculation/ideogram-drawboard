@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ColorPicker } from './ColorPicker';
@@ -20,8 +21,16 @@ export function ColorPalette({ palette, onPaletteChange }: {
     const [draft, setDraft] = useState('#000000');
 
     const openEditor = (index: number, e: any) => {
-        const rect = e.currentTarget?.getBoundingClientRect?.();
-        setEdit({ index, x: rect ? rect.left : 0, y: rect ? rect.bottom + 8 : 0 });
+        // Anchor the popover just below the clicked swatch; fall back to the
+        // pointer position if the element rect isn't available.
+        const rect = e?.currentTarget?.getBoundingClientRect?.();
+        const clientX = e?.clientX ?? e?.nativeEvent?.clientX ?? 0;
+        const clientY = e?.clientY ?? e?.nativeEvent?.clientY ?? 0;
+        setEdit({
+            index,
+            x: rect ? rect.left : clientX - 24,
+            y: rect ? rect.bottom + 8 : clientY + 16,
+        });
         setDraft(palette[index] ?? '#000000');
     };
     const close = () => setEdit(null);
@@ -47,55 +56,67 @@ export function ColorPalette({ palette, onPaletteChange }: {
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
     const popoverLeft = edit ? Math.min(Math.max(edit.x, 8), vw - POPOVER_W - 8) : 0;
 
+    // The editor popover + backdrop. Built as a node so it can be portaled
+    // out of the horizontal metadata ScrollView the swatches live in — the
+    // popover is position:fixed and must be relative to the real viewport, not
+    // clipped/stacked inside the scroll container (it was top-level before the
+    // palette was extracted into this component).
+    const overlay = edit && (
+        <>
+            {/* Transparent full-viewport catcher: closes on outside click. */}
+            <View style={styles.backdrop} onPointerDown={close} />
+            <View
+                testID="color-picker-popover"
+                style={[styles.popover, { left: popoverLeft, top: edit.y }]}
+                onPointerDown={(e) => e.stopPropagation()}
+            >
+                <Text style={styles.popoverTitle}>Edit color</Text>
+                <ColorPicker initialColor={palette[edit.index]} onDraftChange={setDraft} />
+
+                {/* Palette management */}
+                <View style={styles.manageRow}>
+                    <TouchableOpacity style={styles.manageAdd} onPress={addColor}>
+                        <Text style={styles.manageAddText}>+ Add color</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.manageRemove} onPress={removeSwatch}>
+                        <Text style={styles.manageRemoveText}>Remove</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Apply / dismiss */}
+                <View style={styles.actions}>
+                    <TouchableOpacity style={styles.cancelButton} onPress={close}>
+                        <Text style={styles.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.saveButton} onPress={setSwatch}>
+                        <Text style={styles.saveText}>Set color</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </>
+    );
+
     return (
         <View style={styles.row}>
             {palette.map((color, i) => (
-                <TouchableOpacity
+                // A plain View (not TouchableOpacity): in RN-web the touchable
+                // swallows pointer events for its own press detection, so its
+                // onPointerDown never fired. A View's onPointerDown reliably
+                // reaches the DOM node (same pattern as the canvas create-drag).
+                <View
                     key={`pal-${i}`}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    activeOpacity={0.7}
-                    // onPointerDown (not onPress) so we get a DOM event with a
-                    // reliable currentTarget.getBoundingClientRect to anchor the
-                    // popover below the clicked swatch. Web-only, hence the cast.
-                    {...({ onPointerDown: (e: any) => openEditor(i, e) } as any)}
+                    testID={`palette-swatch-${i}`}
+                    onPointerDown={(e) => openEditor(i, e)}
+                    style={{ cursor: 'pointer' } as any}
                 >
                     <View style={[styles.swatch, { backgroundColor: color }, edit?.index === i && styles.swatchActive]} />
-                </TouchableOpacity>
+                </View>
             ))}
 
-            {edit && (
-                <>
-                    {/* Transparent full-viewport catcher: closes on outside click. */}
-                    <View style={styles.backdrop} onPointerDown={close} />
-                    <View
-                        style={[styles.popover, { left: popoverLeft, top: edit.y }]}
-                        onPointerDown={(e) => e.stopPropagation()}
-                    >
-                        <Text style={styles.popoverTitle}>Edit color</Text>
-                        <ColorPicker initialColor={palette[edit.index]} onDraftChange={setDraft} />
-
-                        {/* Palette management */}
-                        <View style={styles.manageRow}>
-                            <TouchableOpacity style={styles.manageAdd} onPress={addColor}>
-                                <Text style={styles.manageAddText}>+ Add color</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.manageRemove} onPress={removeSwatch}>
-                                <Text style={styles.manageRemoveText}>Remove</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Apply / dismiss */}
-                        <View style={styles.actions}>
-                            <TouchableOpacity style={styles.cancelButton} onPress={close}>
-                                <Text style={styles.cancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.saveButton} onPress={setSwatch}>
-                                <Text style={styles.saveText}>Set color</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </>
-            )}
+            {/* Portal the overlay to document.body so it escapes the ScrollView. */}
+            {overlay
+                ? (typeof document !== 'undefined' ? createPortal(overlay, document.body) : overlay)
+                : null}
         </View>
     );
 }
