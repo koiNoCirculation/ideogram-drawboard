@@ -1,66 +1,84 @@
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
+import { Plus } from 'lucide-react-native';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ColorPicker } from './ColorPicker';
 
 const POPOVER_W = 264;
 
 /**
- * The palette: a row of color swatches. Clicking a swatch opens an editor
- * popover (the {@link ColorPicker}) to change it, add the picked color to the
- * palette, or remove the swatch. Reports the full palette via
- * `onPaletteChange`.
+ * Which popover is open: "edit" (clicked an existing swatch) or "add" (clicked
+ * the trailing "+" button). `index` is the swatch being edited (edit mode).
+ */
+type EditState = { mode: 'edit' | 'add'; index: number; x: number; y: number } | null;
+
+/**
+ * The palette: a row of color swatches followed by a "+" add button. Clicking a
+ * swatch opens the {@link ColorPicker} in edit mode (Set color / Remove /
+ * Cancel); clicking "+" opens it in add mode (Add color / Cancel). Reports the
+ * full palette via `onPaletteChange`.
  */
 export function ColorPalette({ palette, onPaletteChange }: {
     palette: string[];
     onPaletteChange: (colors: string[]) => void;
 }) {
-    // Index of the swatch being edited + its viewport anchor (bottom-left).
-    const [edit, setEdit] = useState<{ index: number; x: number; y: number } | null>(null);
+    const [edit, setEdit] = useState<EditState>(null);
     // The hex currently being composed in the popover (driven by the picker).
-    const [draft, setDraft] = useState('#000000');
+    const [draft, setDraft] = useState('#FFFFFF');
 
-    const openEditor = (index: number, e: any) => {
-        // Anchor the popover just below the clicked swatch; fall back to the
-        // pointer position if the element rect isn't available.
+    // Anchor a popover below the clicked element (fall back to the pointer).
+    const anchorAt = (e: any) => {
         const rect = e?.currentTarget?.getBoundingClientRect?.();
         const clientX = e?.clientX ?? e?.nativeEvent?.clientX ?? 0;
         const clientY = e?.clientY ?? e?.nativeEvent?.clientY ?? 0;
-        setEdit({
-            index,
-            x: rect ? rect.left : clientX - 24,
-            y: rect ? rect.bottom + 8 : clientY + 16,
-        });
-        setDraft(palette[index] ?? '#000000');
+        return { x: rect ? rect.left : clientX - 24, y: rect ? rect.bottom + 8 : clientY + 16 };
     };
+
+    // Open the picker to edit an existing swatch.
+    const openEditor = (index: number, e: any) => {
+        setEdit({ mode: 'edit', index, ...anchorAt(e) });
+        setDraft(palette[index] ?? '#FFFFFF');
+    };
+
+    // Open the picker to add a new color (starts from white).
+    const openAdd = (e: any) => {
+        setEdit({ mode: 'add', index: palette.length, ...anchorAt(e) });
+        setDraft('#FFFFFF');
+    };
+
     const close = () => setEdit(null);
 
-    // Replace the swatch being edited with the composed color and close.
+    // Replace the swatch being edited (edit mode only).
     const setSwatch = () => {
-        if (edit) onPaletteChange(palette.map((c, i) => (i === edit.index ? draft : c)));
+        if (!edit || edit.mode !== 'edit') return;
+        onPaletteChange(palette.map((c, i) => (i === edit.index ? draft : c)));
         close();
     };
 
-    // Append the composed color (no duplicates). Keeps the popover open.
-    const addColor = () => {
-        if (palette.some((c) => c.toUpperCase() === draft.toUpperCase())) return;
-        onPaletteChange([...palette, draft]);
-    };
-
-    // Remove the swatch being edited and close.
+    // Remove the swatch being edited (edit mode only).
     const removeSwatch = () => {
-        if (edit) onPaletteChange(palette.filter((_, i) => i !== edit.index));
+        if (!edit || edit.mode !== 'edit') return;
+        onPaletteChange(palette.filter((_, i) => i !== edit.index));
         close();
     };
 
+    // Append the composed color (add mode only), then close.
+    const addColor = () => {
+        if (!edit || edit.mode !== 'add') return;
+        if (!palette.some((c) => c.toUpperCase() === draft.toUpperCase())) {
+            onPaletteChange([...palette, draft]);
+        }
+        close();
+    };
+
+    const isEdit = edit?.mode === 'edit';
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
     const popoverLeft = edit ? Math.min(Math.max(edit.x, 8), vw - POPOVER_W - 8) : 0;
 
-    // The editor popover + backdrop. Built as a node so it can be portaled
-    // out of the horizontal metadata ScrollView the swatches live in — the
-    // popover is position:fixed and must be relative to the real viewport, not
-    // clipped/stacked inside the scroll container (it was top-level before the
-    // palette was extracted into this component).
+    // The editor popover + backdrop. Rendered into document.body (a portal) so
+    // it is not clipped/stacked inside the horizontal metadata ScrollView the
+    // swatches live in — the popover is position:fixed and must be relative to
+    // the real viewport.
     const overlay = edit && (
         <>
             {/* Transparent full-viewport catcher: closes on outside click. */}
@@ -70,27 +88,36 @@ export function ColorPalette({ palette, onPaletteChange }: {
                 style={[styles.popover, { left: popoverLeft, top: edit.y }]}
                 onPointerDown={(e) => e.stopPropagation()}
             >
-                <Text style={styles.popoverTitle}>Edit color</Text>
-                <ColorPicker initialColor={palette[edit.index]} onDraftChange={setDraft} />
+                <Text style={styles.popoverTitle}>{isEdit ? 'Edit color' : 'Add color'}</Text>
+                <ColorPicker
+                    initialColor={isEdit ? palette[edit.index] : '#FFFFFF'}
+                    onDraftChange={setDraft}
+                />
 
-                {/* Palette management */}
-                <View style={styles.manageRow}>
-                    <TouchableOpacity style={styles.manageAdd} onPress={addColor}>
-                        <Text style={styles.manageAddText}>+ Add color</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.manageRemove} onPress={removeSwatch}>
-                        <Text style={styles.manageRemoveText}>Remove</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Apply / dismiss */}
-                <View style={styles.actions}>
-                    <TouchableOpacity style={styles.cancelButton} onPress={close}>
-                        <Text style={styles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.saveButton} onPress={setSwatch}>
-                        <Text style={styles.saveText}>Set color</Text>
-                    </TouchableOpacity>
+                {/* Action buttons — the set depends on the mode. */}
+                <View style={styles.actions} testID="color-actions">
+                    {isEdit ? (
+                        <>
+                            <TouchableOpacity style={[styles.btn, styles.btnPrimary, styles.btnGap]} onPress={setSwatch}>
+                                <Text style={styles.btnPrimaryText}>Set color</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.btn, styles.btnDanger, styles.btnGap]} onPress={removeSwatch}>
+                                <Text style={styles.btnDangerText}>Remove</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={close}>
+                                <Text style={styles.btnGhostText}>Cancel</Text>
+                            </TouchableOpacity>
+                        </>
+                    ) : (
+                        <>
+                            <TouchableOpacity style={[styles.btn, styles.btnPrimary, styles.btnGap]} onPress={addColor}>
+                                <Text style={styles.btnPrimaryText}>Add color</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={close}>
+                                <Text style={styles.btnGhostText}>Cancel</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
                 </View>
             </View>
         </>
@@ -109,9 +136,20 @@ export function ColorPalette({ palette, onPaletteChange }: {
                     onPointerDown={(e) => openEditor(i, e)}
                     style={{ cursor: 'pointer' } as any}
                 >
-                    <View style={[styles.swatch, { backgroundColor: color }, edit?.index === i && styles.swatchActive]} />
+                    <View style={[styles.swatch, { backgroundColor: color }, edit?.mode === 'edit' && edit?.index === i && styles.swatchActive]} />
                 </View>
             ))}
+
+            {/* "+" button: opens the picker in add mode (Add color / Cancel). */}
+            <View
+                testID="palette-add"
+                onPointerDown={(e) => openAdd(e)}
+                style={{ cursor: 'pointer', marginLeft: 6 } as any}
+            >
+                <View style={styles.addSwatch}>
+                    <Plus size={15} color="#888" />
+                </View>
+            </View>
 
             {/* Portal the overlay to document.body so it escapes the ScrollView. */}
             {overlay
@@ -137,6 +175,17 @@ const styles = StyleSheet.create({
     swatchActive: {
         borderWidth: 2,
         borderColor: '#007AFF',
+    },
+    // The trailing "+" add button: a dashed circle matching the swatch size.
+    addSwatch: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: '#AAA',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     backdrop: {
         position: 'fixed',
@@ -167,64 +216,46 @@ const styles = StyleSheet.create({
         color: '#333',
         marginBottom: 10,
     },
-    manageRow: {
+    actions: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: 'center',
         marginTop: 14,
     },
-    manageAdd: {
-        paddingHorizontal: 12,
-        paddingVertical: 7,
+    btn: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
         borderRadius: 6,
-        borderWidth: 1,
-        borderColor: '#007AFF',
-        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    manageAddText: {
-        fontSize: 13,
+    btnGap: {
+        marginRight: 10,
+    },
+    btnPrimary: {
+        backgroundColor: '#007AFF',
+    },
+    btnPrimaryText: {
+        color: '#FFFFFF',
+        fontSize: 14,
         fontWeight: '600',
-        color: '#007AFF',
     },
-    manageRemove: {
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 6,
+    btnDanger: {
         borderWidth: 1,
         borderColor: '#FF3B30',
         backgroundColor: '#FFFFFF',
     },
-    manageRemoveText: {
-        fontSize: 13,
-        fontWeight: '600',
+    btnDangerText: {
         color: '#FF3B30',
+        fontSize: 14,
+        fontWeight: '600',
     },
-    actions: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginTop: 14,
-    },
-    cancelButton: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        marginRight: 10,
-        borderRadius: 6,
+    btnGhost: {
         borderWidth: 1,
         borderColor: '#DDD',
         backgroundColor: '#FFFFFF',
     },
-    cancelText: {
-        fontSize: 14,
+    btnGhostText: {
         color: '#555',
-    },
-    saveButton: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 6,
-        backgroundColor: '#007AFF',
-    },
-    saveText: {
         fontSize: 14,
-        fontWeight: '600',
-        color: '#FFFFFF',
     },
 });
