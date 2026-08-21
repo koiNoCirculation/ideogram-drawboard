@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, Image as ImageIcon, Settings as SettingsIcon, Type } from 'lucide-react-native';
+import { Check, Image as ImageIcon, Redo2, Settings as SettingsIcon, Type, Undo2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -42,6 +42,14 @@ function parseRewrittenCaption(content: string): RefinedPrompt {
 
 /** Minimum drag distance in canvas pixels for a create-drag to count (vs a click). */
 const MIN_CREATE_DRAG_PX = 12;
+
+/**
+ * Undo/redo history: one snapshot per completed user action (a drag/resize
+ * that actually moved, a text/desc edit, an element add/remove, a palette
+ * change). Capped at 50 entries.
+ */
+type Snapshot = { data: RefinedPrompt | null; palette: string[] };
+const UNDO_HISTORY_LIMIT = 50;
 
 /**
  * A small component to display a keyword as a stylized tag.
@@ -89,6 +97,62 @@ export default function DesignScreen() {
     // the only thing that can put an element's desc at odds with its bbox, and
     // the only case where the generate flow needs the LLM desc-rewrite.
     const bboxEditedRef = useRef(false);
+    // Undo/redo: past snapshots + redo stack. "Present" is the live
+    // (refinedData, palette); only the completed pre-action snapshots are kept.
+    const [undoState, setUndoState] = useState<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
+    // Pre-action snapshot captured at the start of an undoable operation.
+    const pendingSnapshotRef = useRef<Snapshot | null>(null);
+
+    // Capture the document as it is BEFORE the caller mutates it.
+    const beginHistory = () => {
+        pendingSnapshotRef.current = { data: refinedData, palette };
+    };
+
+    // Promote the captured pre-action snapshot into the undo stack (and drop
+    // the redo stack — a new action invalidates it). Call once per completed
+    // action, only when something actually changed.
+    const commitHistory = () => {
+        const snap = pendingSnapshotRef.current;
+        pendingSnapshotRef.current = null;
+        if (!snap) return;
+        setUndoState((prev) => ({ past: [...prev.past, snap].slice(-UNDO_HISTORY_LIMIT), future: [] }));
+    };
+
+    // For atomic actions (edit, add, delete, palette change): capture and
+    // commit in one go, right before the state update.
+    const recordAction = () => {
+        beginHistory();
+        commitHistory();
+    };
+
+    // A restored document may put descs at odds with bboxes again (e.g. the
+    // user undoes a drag after the rewrite already ran), so re-arm the
+    // generate-time rewrite whenever the document object actually changes.
+    const restoreSnapshot = (snap: Snapshot) => {
+        if (snap.data !== refinedData) bboxEditedRef.current = true;
+        setRefinedData(snap.data);
+        setPalette(snap.palette);
+    };
+
+    const undo = () => {
+        if (undoState.past.length === 0) return;
+        const snap = undoState.past[undoState.past.length - 1];
+        restoreSnapshot(snap);
+        setUndoState({
+            past: undoState.past.slice(0, -1),
+            future: [{ data: refinedData, palette }, ...undoState.future].slice(0, UNDO_HISTORY_LIMIT),
+        });
+    };
+
+    const redo = () => {
+        if (undoState.future.length === 0) return;
+        const snap = undoState.future[0];
+        restoreSnapshot(snap);
+        setUndoState({
+            past: [...undoState.past, { data: refinedData, palette }].slice(-UNDO_HISTORY_LIMIT),
+            future: undoState.future.slice(1),
+        });
+    };
     // All generated image URLs, in generation order. The canvas background shows
     // the latest by default; the history strip lets the user view older ones.
     const [images, setImages] = useState<string[]>([]);
@@ -129,6 +193,9 @@ export default function DesignScreen() {
             // A freshly loaded caption's descs match its bboxes: no rewrite
             // needed until the user moves or resizes a box.
             bboxEditedRef.current = false;
+            // A freshly loaded (or re-opened) design starts with clean history.
+            pendingSnapshotRef.current = null;
+            setUndoState({ past: [], future: [] });
 
             // Use the high level description as the initial title
             if (parsed.high_level_description) {
@@ -196,6 +263,7 @@ export default function DesignScreen() {
         const element = refinedData?.compositional_deconstruction.elements[index];
         if (!element?.bbox) return;
         dragBaseRef.current = { index, baseBbox: element.bbox };
+        beginHistory();
     };
 
     // Live-update the dragged element's bbox in the JSON prompt (normalized 0-1000).
@@ -220,6 +288,15 @@ export default function DesignScreen() {
     };
 
     const handleDragEnd = () => {
+        const drag = dragBaseRef.current;
+        // One undo step per drag — and only when the box really moved
+        // (a no-op drag against the canvas edge is not an edit).
+        const el = drag ? refinedData?.compositional_deconstruction.elements[drag.index] : undefined;
+        if (drag && el?.bbox && !el.bbox.every((v, i) => v === drag.baseBbox[i])) {
+            commitHistory();
+        } else {
+            pendingSnapshotRef.current = null;
+        }
         dragBaseRef.current = null;
     };
 
@@ -227,6 +304,7 @@ export default function DesignScreen() {
         const element = refinedData?.compositional_deconstruction.elements[index];
         if (!element?.bbox) return;
         resizeBaseRef.current = { index, baseBbox: element.bbox, corner };
+        beginHistory();
     };
 
     // Live-update the resized element's bbox: extend/shift the edges controlled
@@ -261,6 +339,14 @@ export default function DesignScreen() {
     };
 
     const handleResizeEnd = () => {
+        const resize = resizeBaseRef.current;
+        // Same one-step-per-gesture rule as the drag path.
+        const el = resize ? refinedData?.compositional_deconstruction.elements[resize.index] : undefined;
+        if (resize && el?.bbox && !el.bbox.every((v, i) => v === resize.baseBbox[i])) {
+            commitHistory();
+        } else {
+            pendingSnapshotRef.current = null;
+        }
         resizeBaseRef.current = null;
     };
 
@@ -303,6 +389,7 @@ export default function DesignScreen() {
         const value = draft.trim();
         if (!value) return;
         const { index, field } = editing;
+        recordAction();
         setRefinedData((prev) => {
             if (!prev) return prev;
             const elements = prev.compositional_deconstruction.elements.map((el, i) => {
@@ -319,6 +406,7 @@ export default function DesignScreen() {
         if (!contextMenu) return;
         const { index } = contextMenu;
         setContextMenu(null);
+        recordAction();
         setRefinedData((prev) => {
             if (!prev) return prev;
             const elements = prev.compositional_deconstruction.elements.filter((_, i) => i !== index);
@@ -329,6 +417,7 @@ export default function DesignScreen() {
     // Append a new (empty) element of the given type with the given bbox.
     // It shows up on the canvas and can be filled in via the right-click menu.
     const addElement = (type: 'text' | 'obj', bbox: [number, number, number, number]) => {
+        recordAction();
         setRefinedData((prev) => {
             if (!prev) return prev;
             const element: CanvasElement = type === 'text'
@@ -560,6 +649,7 @@ export default function DesignScreen() {
     // Palette edits update the display state and write back into the prompt,
     // so the swatches the user composes are what gets generated/saved.
     const handlePaletteChange = (colors: string[]) => {
+        recordAction();
         setPalette(colors);
         setRefinedData((prev) => prev
             ? { ...prev, style_description: { ...(prev.style_description ?? {}), color_palette: colors } }
@@ -595,6 +685,7 @@ export default function DesignScreen() {
                 <View style={styles.toolbar}>
                     <TouchableOpacity
                         style={[styles.toolButton, activeTool === 'text' && styles.toolButtonActive]}
+                        testID="tool-text"
                         onPress={() => {
                             setActiveTool(activeTool === 'text' ? null : 'text');
                             setHoveredIndex(null);
@@ -604,12 +695,31 @@ export default function DesignScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.toolButton, activeTool === 'obj' && styles.toolButtonActive]}
+                        testID="tool-obj"
                         onPress={() => {
                             setActiveTool(activeTool === 'obj' ? null : 'obj');
                             setHoveredIndex(null);
                         }}
                     >
                         <ImageIcon color={activeTool === 'obj' ? '#FFFFFF' : '#007AFF'} size={28} />
+                    </TouchableOpacity>
+
+                    {/* Undo / redo (greyed out when their stack is empty) */}
+                    <TouchableOpacity
+                        style={[styles.toolButton, styles.toolButtonGap]}
+                        onPress={undo}
+                        disabled={undoState.past.length === 0}
+                        testID="undo-button"
+                    >
+                        <Undo2 color={undoState.past.length > 0 ? '#007AFF' : '#CCCCCC'} size={28} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.toolButton, styles.toolButtonGap]}
+                        onPress={redo}
+                        disabled={undoState.future.length === 0}
+                        testID="redo-button"
+                    >
+                        <Redo2 color={undoState.future.length > 0 ? '#007AFF' : '#CCCCCC'} size={28} />
                     </TouchableOpacity>
                 </View>
 
@@ -968,6 +1078,9 @@ const styles = StyleSheet.create({
     toolButton: {
         marginBottom: 30,
         padding: 10,
+    },
+    toolButtonGap: {
+        marginTop: 20,
     },
     toolButtonActive: {
         backgroundColor: '#007AFF',
