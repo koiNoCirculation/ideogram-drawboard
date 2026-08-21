@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, Image as ImageIcon, Type } from 'lucide-react-native';
+import { Check, Image as ImageIcon, Settings as SettingsIcon, Type } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -14,13 +14,12 @@ import {
 } from 'react-native';
 import { ColorPalette } from './components/ColorPalette';
 import { Corner, ElementBox, MIN_ELEMENT_SIZE } from './components/ElementBox';
+import { SettingsDialog } from './components/SettingsDialog';
 import { Design, upsertDesign } from './services/designStore';
 import { normalizePromptForIdeogram } from './services/IdeogramPrompt';
 import { resolveContradictionInBBox } from './services/PromptRefiner';
+import { getImageUrl, getMissingSettings, loadSettings } from './services/settings';
 import { CanvasElement, RefinedPrompt, isEmptyElement } from './types';
-
-const IDEOGRAM_API_BASE = 'http://127.0.0.1:8000';
-const IDEOGRAM_API_KEY = ''; // leave empty if the local service handles auth
 
 /**
  * Parse the LLM's rewritten caption, tolerating stray markdown fences or prose
@@ -108,6 +107,8 @@ export default function DesignScreen() {
     // "Show elements" checkbox (top-right of the canvas area): when unchecked,
     // the prompt's element boxes are hidden from the canvas.
     const [showElements, setShowElements] = useState(true);
+    // Settings dialog (opened from the gear icon in the header).
+    const [showSettings, setShowSettings] = useState(false);
     // Live rectangle (canvas px) of the element currently being created by dragging.
     const [createDraft, setCreateDraft] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     // Anchor of the in-flight create-drag: start point in canvas px plus the
@@ -463,6 +464,14 @@ export default function DesignScreen() {
     // local Ideogram-compatible service to generate the image.
     const handleGenerate = async () => {
         if (!refinedData || isGenerating) return;
+        // The LLM (rewrite) and image endpoints come from Settings: refuse to
+        // generate with a message naming whatever is still missing.
+        const settings = loadSettings();
+        const missing = getMissingSettings(settings);
+        if (missing.length > 0) {
+            setGenerateError(`Cannot generate — missing settings: ${missing.join(', ')}. Open Settings (gear icon) to configure them.`);
+            return;
+        }
         // No empty elements: a text element needs its text, an obj element its
         // description. They can be filled in via the right-click menu.
         const elements = refinedData.compositional_deconstruction.elements;
@@ -521,10 +530,11 @@ export default function DesignScreen() {
             formData.append('response_type', 'url');
             formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
 
+            const imageKey = settings.imageSecretKey.trim();
             const headers: Record<string, string> = {};
-            if (IDEOGRAM_API_KEY) headers['Api-Key'] = IDEOGRAM_API_KEY;
+            if (imageKey) headers['Api-Key'] = imageKey;
 
-            const response = await fetch(`${IDEOGRAM_API_BASE}/v1/ideogram-v4/generate`, {
+            const response = await fetch(getImageUrl(settings), {
                 method: 'POST',
                 headers,
                 body: formData,
@@ -605,7 +615,7 @@ export default function DesignScreen() {
 
                 {/* Right Content: Title, Metadata & Canvas */}
                 <View style={styles.canvasArea}>
-                    {/* Top Header: Title Input */}
+                    {/* Top Header: Title Input + Settings gear (top-right) */}
                     <View style={styles.header}>
                         <TextInput
                             style={styles.titleInput}
@@ -613,7 +623,13 @@ export default function DesignScreen() {
                             onChangeText={setTitle}
                             placeholder="Untitled Design"
                         />
-                        <View style={styles.spacer} />
+                        <TouchableOpacity
+                            style={styles.settingsButton}
+                            onPress={() => setShowSettings(true)}
+                            testID="settings-gear"
+                        >
+                            <SettingsIcon color="#007AFF" size={28} />
+                        </TouchableOpacity>
                     </View>
 
                     {/* Metadata Bar: six sections in one row, each capped at
@@ -925,6 +941,9 @@ export default function DesignScreen() {
                     </View>
                 );
             })()}
+
+            {/* Settings dialog (LLM + image generation endpoints/credentials) */}
+            {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
         </SafeAreaView>
     );
 }
@@ -973,8 +992,10 @@ const styles = StyleSheet.create({
         color: '#333',
         textAlign: 'center',
     },
-    spacer: {
-        width: 40,
+    // Settings gear in the header's top-right corner (matches toolbar icon size).
+    settingsButton: {
+        padding: 10,
+        marginLeft: 12,
     },
     metadataContainer: {
         flexDirection: 'row',

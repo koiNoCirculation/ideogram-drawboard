@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { Settings as SettingsIcon } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -11,8 +12,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SettingsDialog } from './components/SettingsDialog';
 import { Design, loadDesigns } from './services/designStore';
 import { refine } from './services/PromptRefiner';
+import { getMissingSettings, loadSettings } from './services/settings';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
 
@@ -27,6 +30,8 @@ export default function IndexScreen() {
     const [isLoading, setIsLoading] = useState(false);
     // Saved designs shown in the "recent designs" sidebar, most recent first.
     const [designs, setDesigns] = useState<Design[]>([]);
+    // Settings dialog (opened from the gear icon, top-right of the page).
+    const [showSettings, setShowSettings] = useState(false);
 
     useEffect(() => {
         setDesigns(loadDesigns());
@@ -92,6 +97,13 @@ export default function IndexScreen() {
             Alert.alert('Error', 'Please enter a prompt.');
             return;
         }
+        // The LLM rewrite needs a configured provider: name, a credential for
+        // preset vendors, and an endpoint for self-hosted backends.
+        const missingLlm = getMissingSettings(loadSettings()).filter((m) => m.startsWith('LLM'));
+        if (missingLlm.length > 0) {
+            Alert.alert('Error', `Missing settings: ${missingLlm.join(', ')}. Open Settings (gear icon) to configure them.`);
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -125,6 +137,15 @@ export default function IndexScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* Settings gear, pinned to the page's top-right corner. */}
+            <TouchableOpacity
+                style={styles.settingsButton}
+                onPress={() => setShowSettings(true)}
+                testID="settings-gear"
+            >
+                <SettingsIcon color="#007AFF" size={28} />
+            </TouchableOpacity>
+
             <View style={styles.mainContent}>
                 {/* Left Sidebar: Recent Designs (saved designs, most recent first) */}
                 <View style={styles.leftSidebar}>
@@ -224,6 +245,9 @@ export default function IndexScreen() {
                     </TouchableOpacity>
                 </View>
             </View>
+
+            {/* Settings dialog (LLM + image generation endpoints/credentials) */}
+            {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
         </SafeAreaView>
     );
 }
@@ -236,6 +260,15 @@ const styles = StyleSheet.create({
     mainContent: {
         flex: 1,
         flexDirection: 'row',
+    },
+    // Settings gear, pinned to the page's top-right corner (matches the
+    // design page's toolbar icon size).
+    settingsButton: {
+        position: 'absolute',
+        top: 12,
+        right: 16,
+        padding: 10,
+        zIndex: 10,
     },
     leftSidebar: {
         flex: 1,

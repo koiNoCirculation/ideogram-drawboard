@@ -1,6 +1,32 @@
 import { expect, test } from '@jest/globals';
 import { refine, resolveContradictionInBBox } from '../../app/services/PromptRefiner';
 
+// Pin the configured LLM (the service reads it from localStorage at call
+// time; the jest environment has none) to the legacy test endpoint. The mock
+// is mutable so individual tests can switch the provider (which only swaps
+// the active per-provider profile).
+const mockSettings = {
+    llmProvider: 'vLLM' as string,
+    llmProfiles: {
+        OpenAI: { endpoint: '', secretKey: '', name: '' },
+        Google: { endpoint: '', secretKey: '', name: '' },
+        DeepSeek: { endpoint: '', secretKey: '', name: '' },
+        GLM: { endpoint: '', secretKey: '', name: '' },
+        Qwen: { endpoint: '', secretKey: '', name: '' },
+        vLLM: { endpoint: 'http://192.168.10.4:8000/v1', secretKey: 'yiteng_liu_access', name: 'nvidia/Gemma-4-26B-A4B-NVFP4' },
+        SGLang: { endpoint: '', secretKey: '', name: '' },
+        Ollama: { endpoint: '', secretKey: '', name: '' },
+    },
+    imageProvider: 'Custom',
+    imageEndpoint: 'http://127.0.0.1:8000',
+    imageSecretKey: '',
+};
+jest.mock('../../app/services/settings', () => ({
+    ...jest.requireActual('../../app/services/settings'),
+    getLlmUrl: () => 'http://192.168.10.4:8000/v1/chat/completions',
+    loadSettings: () => mockSettings,
+}));
+
 async function loadSystemPrompt() {
     try {
         const fs = require('fs');
@@ -155,6 +181,44 @@ test('resolveContradictionInBBox: rejects when the LLM API returns an error stat
         resolveContradictionInBBox('system', '{"compositional_deconstruction":{"elements":[]}}')
     ).rejects.toThrow('LLM API Error (500): boom');
     fetchSpy.mockRestore();
+});
+
+test('refine: sends the provider-specific reasoning-disable field', async () => {
+    const ok = (content: string) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content } }] }),
+        text: async () => 'success',
+    });
+    // Ollama answers in its native shape instead.
+    const okOllama = {
+        ok: true,
+        status: 200,
+        json: async () => ({ message: { role: 'assistant', content: '{}' } }),
+        text: async () => 'success',
+    };
+    const cases: Array<[string, Record<string, unknown>]> = [
+        ['OpenAI', { reasoning_effort: 'none' }],
+        ['Google', { thinkingConfig: { thinkingBudget: 0 } }],
+        ['DeepSeek', { thinking: { type: 'disabled' } }],
+        ['GLM', { thinking: { type: 'disabled' } }],
+        ['Qwen', { enable_thinking: false }],
+        ['vLLM', { chat_template_kwargs: { enable_thinking: false } }],
+        ['SGLang', { chat_template_kwargs: { enable_thinking: false } }],
+        // Ollama's native /api/chat body: non-streaming, thinking off, temperature under options.
+        ['Ollama', { stream: false, think: false, options: { temperature: 1.0 } }],
+    ];
+    for (const [provider, expected] of cases) {
+        mockSettings.llmProvider = provider;
+        const fetchSpy = jest.spyOn(global, 'fetch')
+            .mockResolvedValue((provider === 'Ollama' ? okOllama : ok('{}')) as any);
+        await refine('system', 'idea', '1:1');
+        const body = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
+        expect(body).toMatchObject(expected);
+        if (provider === 'Ollama') expect(body.temperature).toBeUndefined();
+        fetchSpy.mockRestore();
+    }
+    mockSettings.llmProvider = 'vLLM';
 });
 
 test('resolveContradictionInBBox: rejects on an unexpected response structure', async () => {
