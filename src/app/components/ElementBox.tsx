@@ -1,6 +1,6 @@
 import { Image as ImageIcon } from 'lucide-react-native';
 import { useRef } from 'react';
-import { PanResponder, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, StyleSheet, Text, TextStyle, View } from 'react-native';
 import { CanvasElement } from '../types';
 
 /** Which corner of the box a resize gesture started from. */
@@ -8,6 +8,21 @@ export type Corner = 'nw' | 'ne' | 'sw' | 'se';
 
 /** Minimum element size in normalized (0-1000) units, so corners can't cross. */
 export const MIN_ELEMENT_SIZE = 20;
+
+/**
+ * Canvas style for a text element's user-set font options (extra_fontoption);
+ * undefined when the element keeps the default look.
+ */
+function textFontStyle(element: CanvasElement): TextStyle | undefined {
+    const fo = element.extra_fontoption;
+    if (!fo) return undefined;
+    return {
+        fontSize: fo.size,
+        fontFamily: fo.font || undefined,
+        fontWeight: fo.bold ? '700' : undefined,
+        fontStyle: fo.italic ? 'italic' : undefined,
+    };
+}
 
 /**
  * A component to render a single parsed element (obj or text) on the canvas,
@@ -111,7 +126,7 @@ export const ElementBox = ({
             </View>
 
             {isText ? (
-                <Text style={styles.elementTextContent}>{element.text}</Text>
+                <Text style={[styles.elementTextContent, textFontStyle(element)]}>{element.text}</Text>
             ) : (
                 <Text style={styles.elementDescText}>{element.desc}</Text>
             )}

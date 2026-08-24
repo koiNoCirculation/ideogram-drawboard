@@ -20,7 +20,7 @@ import {
  * inline expanding list under the field (pushes content down — no overlay or
  * z-index management inside the dialog card).
  */
-function SelectField({ id, label, value, options, onChange }: {
+export function SelectField({ id, label, value, options, onChange }: {
     id: string;
     label: string;
     value: string;

@@ -22,6 +22,19 @@ export interface RefinedPrompt {
             bbox?: [number, number, number, number];
             desc?: string;
             text?: string;
+            /**
+             * Optional font styling for a text element. Only options the user
+             * explicitly changed (i.e. non-default values) appear here —
+             * defaults are NOT stored, because the prompt's own desc carries
+             * the default font description and a stored default would override
+             * it. Absent / empty object = default look.
+             */
+            extra_fontoption?: {
+                size?: number;
+                font?: string;
+                bold?: boolean;
+                italic?: boolean;
+            };
         }>;
     };
 }

@@ -1,23 +1,4 @@
-import { LlmProvider, getActiveLlmProfile, getLlmUrl, loadSettings } from './settings';
-
-/**
- * Each OpenAI-compatible backend exposes reasoning/thinking behind a different
- * request field; these snippets turn it off (the caption rewrites are short
- * mechanical edits — thinking adds latency without quality). vLLM and SGLang
- * steer the chat template via top-level chat_template_kwargs (the SDK's
- * extra_body is merged into the request body; non-thinking templates ignore it).
- * Ollama is not in this table: its native /api/chat body disables thinking
- * with the top-level `think: false` flag instead (see chatCompletion).
- */
-const DISABLE_REASONING: Record<Exclude<LlmProvider, 'Ollama'>, Record<string, unknown>> = {
-    OpenAI: { reasoning_effort: 'none' },
-    Google: { thinkingConfig: { thinkingBudget: 0 } },
-    DeepSeek: { thinking: { type: 'disabled' } },
-    GLM: { thinking: { type: 'disabled' } },
-    Qwen: { enable_thinking: false },
-    vLLM: { chat_template_kwargs: { enable_thinking: false } },
-    SGLang: { chat_template_kwargs: { enable_thinking: false } },
-};
+import { getActiveLlmProfile, getLlmUrl, loadSettings } from './settings';
 
 /**
  * One OpenAI-compatible chat completion against the LLM configured in
@@ -51,23 +32,20 @@ async function chatCompletion(system_prompt: string, user_prompt: string): Promi
     ];
     // Ollama speaks its native /api/chat dialect (docs.ollama.com/api/chat)
     // instead of the OpenAI-compatible one: non-streaming, sampling controls
-    // under `options`, and thinking disabled with the top-level `think` flag.
-    const provider = settings.llmProvider;
-    const isOllama = provider === 'Ollama';
+    // under `options`. No reasoning fields are sent — every backend runs with
+    // its own thinking/reasoning mode enabled.
+    const isOllama = settings.llmProvider === 'Ollama';
     const body = isOllama
       ? {
           model: profile.name.trim(),
           messages,
           stream: false,
-          think: false,
           options: { temperature: 1.0 },
         }
       : {
           model: profile.name.trim(),
           messages,
           temperature: 1.0,
-          // Reasoning disabled per backend (see DISABLE_REASONING).
-          ...DISABLE_REASONING[provider],
         };
 
     const response = await fetch(url, {

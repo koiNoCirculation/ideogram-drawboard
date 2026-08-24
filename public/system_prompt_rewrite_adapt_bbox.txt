@@ -31,3 +31,111 @@ For example, [0, 0, 500, 1000] places an element in the top half of the image. [
 The description of the element, there might be some contradictions between desc and bbox, because user changed the location and size of bbox.
 What you need to do is keeping any other information, but resolve the contradiction between bbox and desc, you need to follow the information in bbox. If you think there's no contradiction between desc and bbox in current element, just keep them as it was.
 DO NOT change information in desc but position related info.
+e.g : 
+There's a contradiction between relation of the bbox of element[0] and element[1], and the desc of element[1], you need to fix it, let desc of element[1] follow the relation of bbox of element[0] and element[1]
+```json
+{
+            "aspect_ratio": "4:3",
+            "high_level_description": "Vintage 1950s natural-history trading card, a graphic-design collectible, features a small halftone illustration of a goldcrest (Regulus regulus) on a pine sprig over aged cream cardstock with fine halftone print texture, plus black serif title, italic Latin name, caption, number, and dark green series mark.",
+            "style_description": {
+                "aesthetics": "vintage 1950s collectible, natural-history, restrained, aged, botanical",
+                "lighting": "even flat illumination for a printed card surface, minimal contrast, no scene lighting",
+                "medium": "graphic_design",
+                "art_style": "vintage 1950s natural-history trading card, small halftone illustration, aged cream cardstock, fine print dots, simple serif typography",
+                "color_palette": [
+                    "#F3E9D2",
+                    "#F8F2E2",
+                    "#1C1A17",
+                    "#234E3A",
+                    "#7A5B3A",
+                    "#D7A82F",
+                    "#5F6B3F",
+                    "#6E7A85"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "Aged cream cardstock card filling the frame, thin cream margin surrounding a central printed area, off-white card field.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            207,
+                            261,
+                            687,
+                            741
+                        ],
+                        "desc": "Vintage halftone illustration of a goldcrest perched on a pine sprig, central printed vignette, tiny gold crown, olive-brown back, yellow throat, short dark tail, gripping a slender brown pine twig with fine needles."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            66,
+                            279,
+                            126,
+                            719
+                        ],
+                        "text": "Goldcrest",
+                        "desc": "Upper-center large(48px) red(#FF0000) Times new Roman title at the top of the card, bold upright lettering, evenly spaced characters, high contrast against cream cardstock, positioned above the italic Latin name and the central halftone illustration."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            146,
+                            331,
+                            186,
+                            671
+                        ],
+                        "text": "Regulus regulus",
+                        "desc": "Centered italic black serif Latin name directly below the title, regular weight, slightly smaller than the title, clear legible lowercase species epithet, aligned to the same vertical axis as the headline and illustration."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            695,
+                            222,
+                            851,
+                            773
+                        ],
+                        "text": "Perched on a pine sprig",
+                        "desc": "Centered Purple(#D518D5) serif caption beneath the illustration, regular upright text, concise natural-history wording, smaller than the title but larger than the corner markings, positioned in the lower-center area above the number and series mark.",
+                        "extra_fontoption": {
+                            "size": 40,
+                            "font": "Courier New",
+                            "bold": true,
+                            "italic": true
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            858,
+                            95,
+                            918,
+                            255
+                        ],
+                        "text": "No. 7",
+                        "desc": "Small black Windings number in the lower-left corner, upright regular type, compact spacing, positioned close to the left card margin, lower and to the left of the caption, acting as the collectible card identification numeral."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            860,
+                            633,
+                            910,
+                            903
+                        ],
+                        "text": "Natural History Series",
+                        "desc": "Small dark green serif series mark in the lower-right corner, compact upright lettering, aligned to the right margin, visually paired with the lower-left number and placed below the illustration area and toward the right margin."
+                    }
+                ]
+            }
+        }
+```
+
+### `extra_fontoption`
+when current element type is 'text', it can have extra_fontoption, which contains:
+- font, for example 'Times New Roman', 'Dejavu Sans Mono', etc
+- size in px, integer,
+- italic, boolean
+- bold, boolean
+if extra_fontoption is present, please adjust font information according to extra_fontoption, and keep extra_fontoption, and any other other information in desc as it was.

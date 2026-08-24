@@ -183,42 +183,41 @@ test('resolveContradictionInBBox: rejects when the LLM API returns an error stat
     fetchSpy.mockRestore();
 });
 
-test('refine: sends the provider-specific reasoning-disable field', async () => {
-    const ok = (content: string) => ({
+test('refine: sends no reasoning/thinking fields (thinking stays enabled)', async () => {
+    const ok = {
         ok: true,
         status: 200,
-        json: async () => ({ choices: [{ message: { content } }] }),
+        json: async () => ({ choices: [{ message: { content: '{}' } }] }),
         text: async () => 'success',
-    });
-    // Ollama answers in its native shape instead.
+    };
+    for (const provider of ['OpenAI', 'Google', 'DeepSeek', 'GLM', 'Qwen', 'vLLM', 'SGLang']) {
+        mockSettings.llmProvider = provider;
+        const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(ok as any);
+        await refine('system', 'idea', '1:1');
+        const body = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
+        expect(body.reasoning_effort).toBeUndefined();
+        expect(body.thinkingConfig).toBeUndefined();
+        expect(body.thinking).toBeUndefined();
+        expect(body.enable_thinking).toBeUndefined();
+        expect(body.chat_template_kwargs).toBeUndefined();
+        fetchSpy.mockRestore();
+    }
+    // Ollama's native body: non-streaming, temperature under options, no think flag.
     const okOllama = {
         ok: true,
         status: 200,
         json: async () => ({ message: { role: 'assistant', content: '{}' } }),
         text: async () => 'success',
     };
-    const cases: Array<[string, Record<string, unknown>]> = [
-        ['OpenAI', { reasoning_effort: 'none' }],
-        ['Google', { thinkingConfig: { thinkingBudget: 0 } }],
-        ['DeepSeek', { thinking: { type: 'disabled' } }],
-        ['GLM', { thinking: { type: 'disabled' } }],
-        ['Qwen', { enable_thinking: false }],
-        ['vLLM', { chat_template_kwargs: { enable_thinking: false } }],
-        ['SGLang', { chat_template_kwargs: { enable_thinking: false } }],
-        // Ollama's native /api/chat body: non-streaming, thinking off, temperature under options.
-        ['Ollama', { stream: false, think: false, options: { temperature: 1.0 } }],
-    ];
-    for (const [provider, expected] of cases) {
-        mockSettings.llmProvider = provider;
-        const fetchSpy = jest.spyOn(global, 'fetch')
-            .mockResolvedValue((provider === 'Ollama' ? okOllama : ok('{}')) as any);
-        await refine('system', 'idea', '1:1');
-        const body = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
-        expect(body).toMatchObject(expected);
-        if (provider === 'Ollama') expect(body.temperature).toBeUndefined();
-        fetchSpy.mockRestore();
-    }
+    mockSettings.llmProvider = 'Ollama';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(okOllama as any);
+    await refine('system', 'idea', '1:1');
+    const ollamaBody = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
+    expect(ollamaBody.stream).toBe(false);
+    expect(ollamaBody.think).toBeUndefined();
+    expect(ollamaBody.options).toEqual({ temperature: 1.0 });
     mockSettings.llmProvider = 'vLLM';
+    fetchSpy.mockRestore();
 });
 
 test('resolveContradictionInBBox: rejects on an unexpected response structure', async () => {

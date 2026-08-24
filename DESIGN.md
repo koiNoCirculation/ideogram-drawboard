@@ -48,6 +48,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - `bbox`（可选）：`[y_min, x_min, y_max, x_max]`，归一化 0–1000，**原点在左上角**（y 在前）。
 - `desc`：描述（obj 必填内容；text 也有）。
 - `text`：仅 text 元素，要渲染进画面的文字（原样保留）。
+- `extra_fontoption`（可选，仅 text 元素）：部分对象 `{ size?: number, font?: string, bold?: boolean, italic?: boolean }`，仅包含用户显式改过的非默认值，默认值不入库（见「元素框」节）。
 - 空元素判定 `isEmptyElement`：text 无 `text`、或 obj 无 `desc`。
 
 ### Design（designStore.ts）
@@ -130,7 +131,11 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - **四角缩放**：四角 handle（14px，hitSlop 10）为子级手势，天然赢过移动热区；只拉伸被抓角落点/边，clamp 到画布与最小尺寸 `MIN_ELEMENT_SIZE = 20`（0–1000 单位），取整写回。
 - 悬停：白底高亮；悬停 text 元素时显示黑色 tooltip（展示 `desc`，优先在框上方，空间不足翻到下方，水平钳制在画布内）。
 - **右键菜单**（RN-web 映射 DOM contextmenu）：`Edit description`（所有元素）/ `Edit text`（仅 text）/ 分隔线 / `Delete`。菜单定位钳制在视口内；点任意处（透明全屏遮罩）关闭。
-- 编辑对话框：多行输入，聚焦全选；内容为空时 Save 禁用；保存写回对应字段（空内容不覆盖）。
+- 编辑对话框：多行输入，聚焦全选；内容为空时 Save 禁用；保存写回对应字段（空内容不覆盖）。**text 元素额外提供字体选项区**（保存后即时反映在画布展示上）：
+  - **字体大小 (px)**：下拉预设（12–64）+ 可直接手输任意整数；
+  - **字体**：下拉选择常用字体（Arial/Helvetica/Times New Roman/Georgia/Verdana/Trebuchet MS/Courier New/Garamond/Palatino/Impact/Comic Sans MS/Brush Script MT/Noto Sans CJK SC/SimSun/KaiTi），默认 "Default"；
+  - **加粗 / 斜体**：B / I 切换按钮（激活时蓝色底白字）。
+  **只保存用户显式改过的（非默认）值**：`extra_fontoption` 是部分对象，仅包含非默认的键——size ≠ 13 才写 `size`，选了字体才写 `font`，开启才写 `bold`/`italic: true`；因为 prompt 的 desc 自带默认字体描述，存默认值会与之冲突，所以默认值一律不入库。一个键都没改 → 整个字段不写（已有时移除），元素保持原有默认外观。画布按字段中存在的键渲染 `fontSize/fontFamily/fontWeight/fontStyle`。字体选项发生实际变化（设值或恢复默认）会置位 `bboxEditedRef`，下次生成时触发 LLM 重写提示词（见「生成」节）。
 - 删除：从 `elements` 数组中移除。
 
 ### 撤销 / 重做（左侧工具栏）
@@ -152,7 +157,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 ### 生成（Generate）
 0. **设置校验**：`getMissingSettings` 任一项缺失 → 拒绝生成，错误行显示 "Cannot generate — missing settings: …"，不发起 LLM/生成请求。
 1. **空元素校验**：任一元素为空（text 无 text / obj 无 desc）→ 阻止生成，显示错误「Element N is empty — right-click it on the canvas to edit its text/description」，并对空元素红框闪烁（3 个亮灭周期后常亮，直到修复）。
-2. **bbox 改写（按需）**：仅当用户移动/缩放过元素框时才执行（`bboxEditedRef` 标记：拖动/缩放后 clamp 结果与手势起点 bbox 不同才置位；加载 promptData 时复位；重写合并成功后复位，未再编辑则后续生成继续跳过；生成进行中若又拖了框会重新置位）。未编辑过画布时直接跳过这次 LLM 调用。执行时读 `system_prompt_rewrite_adapt_bbox.txt`，把当前 `refinedData` JSON 发给 `resolveContradictionInBBox`，LLM 只改写各元素 `desc` 中与用户移动/缩放后 bbox 矛盾的位置描述，其余字段保持不变。
+2. **bbox 改写（按需）**：仅当画布编辑可能使 caption 与展示不一致时才执行（`bboxEditedRef` 标记，以下情况置位）：拖动/缩放后 clamp 结果与手势起点 bbox 不同；**修改了文字元素的字体选项（`extra_fontoption` 实际变化，含设值和恢复默认）**；撤销/重做恢复了不同的文档。加载 promptData 时复位；重写合并成功后复位，未再编辑则后续生成继续跳过；生成进行中若又编辑会重新置位。未编辑过画布时直接跳过这次 LLM 调用。执行时读 `system_prompt_rewrite_adapt_bbox.txt`，把当前 `refinedData` JSON 发给 `resolveContradictionInBBox`，LLM 只改写各元素 `desc` 中与用户移动/缩放后 bbox 矛盾的位置描述，其余字段保持不变。
    重置时机刻意放在**合并成功之后**：重写调用失败或返回非法 JSON 时保留标记，下次 Generate 自动重试；重写成功但生成 API 失败也不需重写（desc 已与当前 bbox 一致且已写回 `refinedData`）。
 3. **合并**：只把改写回来的 `desc` 逐个元素合并回本地 caption（要求 index 对应、type 相同、desc 为非空字符串，否则保留原元素）——画布 bbox 永远是唯一事实来源。
 4. **规范化**：`normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
@@ -171,8 +176,8 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - `refine(system_prompt, prompt, aspectRatio)`：用户消息 = `TARGET IMAGE ASPECT RATIO: {ratio} (width:height).\nUser idea: {prompt}`。
 - `resolveContradictionInBBox(system_prompt, prompt)`：用户消息就是 JSON caption 原文（不加包装）。
 - 返回 `choices[0].message.content`（字符串），由调用方解析/防御。
-- 请求体按后端**禁用思考（reasoning）**：OpenAI `reasoning_effort: 'none'`、Google `thinkingConfig: { thinkingBudget: 0 }`、DeepSeek / GLM `thinking: { type: 'disabled' }`、Qwen `enable_thinking: false`、vLLM / SGLang 顶层 `chat_template_kwargs: { enable_thinking: false }`（SDK 的 `extra_body` 合并进请求体，非思考模板会忽略）。
-- **Ollama 走原生 `/api/chat` 方言**（docs.ollama.com/api/chat，非 OpenAI 兼容）：请求体 `{ model, messages, stream: false, think: false, options: { temperature } }`（无顶层 temperature）；响应取 `data.message.content`（而非 `choices[0].message.content`）。
+- 请求体**不发送任何思考（reasoning）开关字段**——所有 LLM 后端都保持自身默认的思考模式启用。
+- **Ollama 走原生 `/api/chat` 方言**（docs.ollama.com/api/chat，非 OpenAI 兼容）：请求体 `{ model, messages, stream: false, options: { temperature } }`（无顶层 temperature、无 `think` 字段）；响应取 `data.message.content`（而非 `choices[0].message.content`）。
 
 ### settings.ts
 - `Settings` 结构：`llmProvider` + `llmProfiles`（8 个 provider 各自的 `{endpoint, secretKey, name}`，切换 provider 不互相覆盖）+ 3 个图像项；`loadSettings` / `saveSettings` 走 localStorage `drawboard.settings`，解析失败回退默认值（provider=OpenAI、imageProvider=Custom、imageEndpoint=本地 8000）。

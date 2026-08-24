@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, Image as ImageIcon, Redo2, Settings as SettingsIcon, Type, Undo2 } from 'lucide-react-native';
+import { Check, ChevronDown, Image as ImageIcon, Redo2, Settings as SettingsIcon, Type, Undo2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { ColorPalette } from './components/ColorPalette';
 import { Corner, ElementBox, MIN_ELEMENT_SIZE } from './components/ElementBox';
-import { SettingsDialog } from './components/SettingsDialog';
+import { SelectField, SettingsDialog } from './components/SettingsDialog';
 import { Design, upsertDesign } from './services/designStore';
 import { normalizePromptForIdeogram } from './services/IdeogramPrompt';
 import { resolveContradictionInBBox } from './services/PromptRefiner';
@@ -50,6 +50,17 @@ const MIN_CREATE_DRAG_PX = 12;
  */
 type Snapshot = { data: RefinedPrompt | null; palette: string[] };
 const UNDO_HISTORY_LIMIT = 50;
+
+/** Default canvas text size in px — matches ElementBox's elementTextContent style. */
+const DEFAULT_TEXT_FONT_SIZE = 13;
+/** Preset sizes offered by the font-size dropdown (any integer can also be typed). */
+const FONT_SIZE_PRESETS = [12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
+/** Common fonts offered in the font dropdown. */
+const FONT_CHOICES = [
+    'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Trebuchet MS',
+    'Courier New', 'Garamond', 'Palatino', 'Impact', 'Comic Sans MS', 'Brush Script MT',
+    'Noto Sans CJK SC', 'SimSun', 'KaiTi',
+];
 
 /**
  * A small component to display a keyword as a stylized tag.
@@ -166,6 +177,11 @@ export default function DesignScreen() {
     const [editing, setEditing] = useState<{ index: number; field: 'desc' | 'text' } | null>(null);
     // The value being edited in the dialog's input.
     const [draft, setDraft] = useState('');
+    // Font options of the element being edited in the text dialog. `size` is
+    // kept as the raw input text; defaults mirror the plain canvas look.
+    const [fontOpt, setFontOpt] = useState({ size: String(DEFAULT_TEXT_FONT_SIZE), font: '', bold: false, italic: false });
+    // Whether the font-size preset dropdown is open.
+    const [sizeMenuOpen, setSizeMenuOpen] = useState(false);
     // Active toolbar tool: drag on the canvas to create an element of this type.
     const [activeTool, setActiveTool] = useState<'text' | 'obj' | null>(null);
     // "Show elements" checkbox (top-right of the canvas area): when unchecked,
@@ -380,6 +396,16 @@ export default function DesignScreen() {
         setContextMenu(null);
         if (!element) return;
         setDraft(field === 'desc' ? (element.desc ?? '') : (element.text ?? ''));
+        // Seed the font options from the element's existing extra_fontoption
+        // (defaults = the plain canvas look) and close the size preset list.
+        const fo = element.extra_fontoption;
+        setFontOpt({
+            size: String(fo?.size ?? DEFAULT_TEXT_FONT_SIZE),
+            font: fo?.font ?? '',
+            bold: fo?.bold ?? false,
+            italic: fo?.italic ?? false,
+        });
+        setSizeMenuOpen(false);
         setEditing({ index, field });
     };
 
@@ -390,11 +416,46 @@ export default function DesignScreen() {
         if (!value) return;
         const { index, field } = editing;
         recordAction();
+        // A font-option change alters the text element's rendering, so the
+        // caption needs an LLM rewrite at generate time: re-arm the rewrite
+        // whenever the stored extra_fontoption actually changes.
+        if (field === 'text') {
+            const element = refinedData?.compositional_deconstruction.elements[index];
+            const typed = parseInt(fontOpt.size, 10);
+            const sizeNum = Number.isFinite(typed) && typed > 0 ? typed : DEFAULT_TEXT_FONT_SIZE;
+            const fo: NonNullable<CanvasElement['extra_fontoption']> = {};
+            if (sizeNum !== DEFAULT_TEXT_FONT_SIZE) fo.size = sizeNum;
+            if (fontOpt.font !== '') fo.font = fontOpt.font;
+            if (fontOpt.bold) fo.bold = true;
+            if (fontOpt.italic) fo.italic = true;
+            const next = Object.keys(fo).length ? fo : undefined;
+            const changed = (['size', 'font', 'bold', 'italic'] as const)
+                .some((k) => (element?.extra_fontoption?.[k] ?? null) !== (next?.[k] ?? null));
+            if (changed) bboxEditedRef.current = true;
+        }
         setRefinedData((prev) => {
             if (!prev) return prev;
             const elements = prev.compositional_deconstruction.elements.map((el, i) => {
                 if (i !== index) return el;
-                return field === 'desc' ? { ...el, desc: value } : { ...el, text: value };
+                if (field === 'desc') return { ...el, desc: value };
+                // Text: apply the font options. Only NON-DEFAULT values are
+                // stored — the prompt's own desc carries the default font
+                // description, so a stored default would fight it. No
+                // explicit change -> the field is (re)removed entirely.
+                const typed = parseInt(fontOpt.size, 10);
+                const sizeNum = Number.isFinite(typed) && typed > 0 ? typed : DEFAULT_TEXT_FONT_SIZE;
+                const fo: NonNullable<CanvasElement['extra_fontoption']> = {};
+                if (sizeNum !== DEFAULT_TEXT_FONT_SIZE) fo.size = sizeNum;
+                if (fontOpt.font !== '') fo.font = fontOpt.font;
+                if (fontOpt.bold) fo.bold = true;
+                if (fontOpt.italic) fo.italic = true;
+                const isDefault = Object.keys(fo).length === 0;
+                if (isDefault) {
+                    const rest = { ...el };
+                    delete rest.extra_fontoption;
+                    return { ...rest, text: value };
+                }
+                return { ...el, text: value, extra_fontoption: fo };
             });
             return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
         });
@@ -1035,6 +1096,78 @@ export default function DesignScreen() {
                                 selectTextOnFocus
                                 autoFocus
                             />
+
+                            {/* Font options — text elements only. Applied on
+                                save; absent/defaults keep the plain look. */}
+                            {!isDesc && (
+                                <View style={styles.fontOptions}>
+                                    <View style={styles.fontField}>
+                                        <Text style={styles.fontLabel}>Font size (px)</Text>
+                                        <View style={styles.sizeCombo}>
+                                            <TextInput
+                                                testID="font-size-input"
+                                                style={styles.sizeInput}
+                                                value={fontOpt.size}
+                                                onChangeText={(v) => setFontOpt((p) => ({ ...p, size: v.replace(/[^0-9]/g, '') }))}
+                                                keyboardType="numeric"
+                                                selectTextOnFocus
+                                            />
+                                            <TouchableOpacity
+                                                testID="font-size-menu"
+                                                style={styles.sizeChevron}
+                                                onPress={() => setSizeMenuOpen((o) => !o)}
+                                            >
+                                                <ChevronDown
+                                                    size={14}
+                                                    color="#888"
+                                                    style={{ transform: [{ rotate: sizeMenuOpen ? '180deg' : '0deg' }] } as any}
+                                                />
+                                            </TouchableOpacity>
+                                        </View>
+                                        {sizeMenuOpen && (
+                                            <View style={styles.sizeList}>
+                                                {FONT_SIZE_PRESETS.map((s) => (
+                                                    <TouchableOpacity
+                                                        key={s}
+                                                        testID={`font-size-${s}`}
+                                                        style={styles.sizeOption}
+                                                        onPress={() => {
+                                                            setFontOpt((p) => ({ ...p, size: String(s) }));
+                                                            setSizeMenuOpen(false);
+                                                        }}
+                                                    >
+                                                        <Text style={styles.sizeOptionText}>{s}</Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        )}
+                                    </View>
+                                    <SelectField
+                                        id="font-choice"
+                                        label="Font"
+                                        value={fontOpt.font === '' ? 'Default' : fontOpt.font}
+                                        options={['Default', ...FONT_CHOICES]}
+                                        onChange={(v) => setFontOpt((p) => ({ ...p, font: v === 'Default' ? '' : v }))}
+                                    />
+                                    <View style={styles.fontToggles}>
+                                        <TouchableOpacity
+                                            testID="font-bold"
+                                            style={[styles.fontToggle, fontOpt.bold && styles.fontToggleActive]}
+                                            onPress={() => setFontOpt((p) => ({ ...p, bold: !p.bold }))}
+                                        >
+                                            <Text style={[styles.fontToggleText, { fontWeight: '700' }, fontOpt.bold && { color: '#FFFFFF' }]}>B</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            testID="font-italic"
+                                            style={[styles.fontToggle, fontOpt.italic && styles.fontToggleActive]}
+                                            onPress={() => setFontOpt((p) => ({ ...p, italic: !p.italic }))}
+                                        >
+                                            <Text style={[styles.fontToggleText, { fontStyle: 'italic' }, fontOpt.italic && { color: '#FFFFFF' }]}>I</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
+
                             <View style={styles.dialogActions}>
                                 <TouchableOpacity style={styles.dialogCancelButton} onPress={() => setEditing(null)}>
                                     <Text style={styles.dialogCancelText}>Cancel</Text>
@@ -1417,6 +1550,78 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#333',
         backgroundColor: '#FAFAFA',
+    },
+    // Font options in the text edit dialog.
+    fontOptions: {
+        marginTop: 12,
+    },
+    fontField: {
+        marginBottom: 12,
+    },
+    fontLabel: {
+        fontSize: 10,
+        color: '#AAA',
+        textTransform: 'uppercase',
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    sizeCombo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderColor: '#DDD',
+        borderWidth: 1,
+        borderRadius: 6,
+        backgroundColor: '#FAFAFA',
+    },
+    sizeInput: {
+        flex: 1,
+        padding: 9,
+        fontSize: 14,
+        color: '#333',
+    },
+    sizeChevron: {
+        padding: 10,
+    },
+    sizeList: {
+        borderColor: '#DDD',
+        borderTopWidth: 0,
+        borderWidth: 1,
+        borderRadius: 6,
+        marginTop: -4,
+        backgroundColor: '#FFFFFF',
+    },
+    sizeOption: {
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+    sizeOptionText: {
+        fontSize: 14,
+        color: '#333',
+    },
+    fontToggles: {
+        flexDirection: 'row',
+        marginTop: 2,
+    },
+    fontToggle: {
+        width: 36,
+        height: 32,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#DDD',
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+    fontToggleActive: {
+        backgroundColor: '#007AFF',
+        borderColor: '#007AFF',
+    },
+    fontToggleText: {
+        fontSize: 14,
+        color: '#333',
     },
     dialogActions: {
         flexDirection: 'row',
