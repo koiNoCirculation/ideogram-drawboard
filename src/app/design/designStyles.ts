@@ -165,6 +165,63 @@ export const styles = StyleSheet.create({
         top: 0,
         left: 0,
     },
+    // Canvas rulers: strips along the top and left edges, 0-1000 on both
+    // axes. Rendered above everything on the canvas but pointer-transparent.
+    rulerTop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        borderBottomWidth: 1,
+        borderBottomColor: '#007AFF',
+        zIndex: 10,
+    },
+    rulerLeft: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        width: 30,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        borderRightWidth: 1,
+        borderRightColor: '#007AFF',
+        zIndex: 9,
+    },
+    // Major tick (at a numbered position): long on the edge it hangs from.
+    rulerMajorH: {
+        position: 'absolute',
+        top: 0,
+        width: 1,
+        height: 8,
+        backgroundColor: '#333333',
+    },
+    rulerMajorV: {
+        position: 'absolute',
+        left: 0,
+        width: 8,
+        height: 1,
+        backgroundColor: '#333333',
+    },
+    // Number boxes: fixed size, clamped to stay inside the ruler strip.
+    rulerLabelH: {
+        position: 'absolute',
+        top: 8,
+        height: 12,
+        width: 24,
+    },
+    rulerLabelV: {
+        position: 'absolute',
+        left: 9,
+        width: 20,
+        height: 12,
+    },
+    rulerLabelText: {
+        fontSize: 9,
+        color: '#333333',
+        textAlign: 'center',
+    },
     generateRow: {
         marginTop: 16,
         alignItems: 'center',

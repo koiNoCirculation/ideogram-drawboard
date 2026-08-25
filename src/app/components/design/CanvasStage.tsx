@@ -7,6 +7,7 @@ import type { ElementTool } from '../../design/useCanvasInteraction';
 import { CanvasElement, isEmptyElement } from '../../types';
 import { ElementBox } from '../ElementBox';
 import type { Corner } from '../ElementBox';
+import { CanvasRulers } from './CanvasRulers';
 import { HistoryStrip } from './HistoryStrip';
 import { GenerateRow } from './GenerateRow';
 
@@ -289,6 +290,12 @@ export const CanvasStage = ({
                             },
                         ]}
                     />
+                )}
+
+                {/* Rulers on the top/left edges (0-1000 on both axes);
+                    they scale with the canvas and line up with the grid. */}
+                {displaySize.width > 0 && (
+                    <CanvasRulers width={displaySize.width} height={displaySize.height} zoom={canvasZoom} />
                 )}
             </View>
         </View>

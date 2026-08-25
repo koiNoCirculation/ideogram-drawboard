@@ -30,6 +30,20 @@ export const gridCellUnits = (zoom: number): number => {
 };
 
 /**
+ * Ruler number density in bbox units (0-1000 space), tiered by the same
+ * wheel levels as the grid: a number every 100 units at levels 0-1, every 50
+ * at 2-3, every 20 at 4-5, and every 10 from level 6 up. Each step is a
+ * multiple of that level's grid cell, so numbers always sit on grid lines.
+ */
+export const rulerLabelStep = (zoom: number): number => {
+    const f = CANVAS_WHEEL_ZOOM_FACTOR;
+    if (zoom >= f ** 6) return 10;
+    if (zoom >= f ** 4) return 20;
+    if (zoom >= f ** 2) return 50;
+    return 100;
+};
+
+/**
  * Undo/redo history: one snapshot per completed user action (a drag/resize
  * that actually moved, a text/desc edit, an element add/remove, a palette
  * change). Capped at 50 entries.
