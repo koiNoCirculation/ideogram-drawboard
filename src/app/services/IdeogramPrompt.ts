@@ -41,11 +41,10 @@ export function normalizePromptForIdeogram(data: RefinedPrompt): RefinedPrompt {
     } else if (artStyle) {
         isPhotoMode = false;
     } else {
-        // Neither present: the contract still requires one, so fill the
-        // medium-appropriate key with a neutral default.
+        // Neither present: the contract still requires one, so the
+        // medium-appropriate key is kept (empty) rather than inventing a
+        // default that would fight the prompt's own description.
         isPhotoMode = mediumIsPhoto;
-        photoValue = '35mm, natural light';
-        artValue = medium || 'digital illustration';
     }
 
     const normalized: NonNullable<RefinedPrompt['style_description']> = {};

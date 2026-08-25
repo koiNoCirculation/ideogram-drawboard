@@ -119,8 +119,12 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - `handlePaletteChange` 同时更新 UI 状态并**写回** `refinedData.style_description.color_palette`（保证生成/保存用的是用户改后的调色板）。
 
 ### 画布
-- **Show elements 复选框**：画布区右上角固定一个小复选框 + "Show elements" 标签（默认勾选）；取消勾选时所有 prompt 元素框（及悬停 tooltip）隐藏，勾选恢复。隐藏只是 `display:none`，不改动数据，且不会显示 "Canvas Area" 占位（占位仅在没有任何元素时出现）；创建工具在隐藏状态下仍可正常拖出新元素（新建元素属于 prompt 元素，同样受开关控制显隐）。
+- **Show grid / Show elements 复选框**：画布区右上角固定两个小复选框（默认都勾选）。"Show elements"：取消勾选时所有 prompt 元素框（及悬停 tooltip）隐藏，勾选恢复；隐藏只是 `display:none`，不改动数据，且不会显示 "Canvas Area" 占位（占位仅在没有任何元素时出现）；创建工具在隐藏状态下仍可正常拖出新元素（新建元素属于 prompt 元素，同样受开关控制显隐）。"Show grid"：取消勾选时网格线隐藏，**且网格吸附关闭**（拖动/缩放/创建不再吸附，按自由坐标移动）。
 - 画布区 `onLayout` 测得可用尺寸后，`scale = min(可用宽/逻辑宽, 可用高/逻辑高)`，画布显示尺寸 = 逻辑尺寸 × scale（保持长宽比）。
+- **滚轮缩放（居中缩放）**：在画布区上滚轮缩放画布（每档 ×/÷1.1，范围 1–8），只放大画布及其内部元素/元素框（几何全部基于含缩放的 `displaySize` 计算，自动跟随）；画布外的组件（元数据栏、按钮、复选框等）不参与缩放。放大后画布区变为滚动容器（`overflow: scroll`，父容器改左上对齐、画布用 `margin: auto`——仍放得下的轴保持居中，溢出的轴完整可滚），**每次缩放后自动把滚动位置滚到中心**，即画布中心始终停在视口中心（居中缩放）；之后可用滚动条拖动浏览。滚轮事件用非 passive 原生监听并 `preventDefault`，缩放时容器不跟着滚。缩小回 1 后恢复居中、无滚动条；重新加载/重开设计时缩放复位为 1。
+- **网格系统（跟随缩放等级，0–1000 bbox 空间）**：画布上叠加一层细网格线（`repeating-linear-gradient`，pointer-events 关闭），单元格大小按滚轮档位数分档：基础档 100×100 格（10 单位/格）→ 放大 2 档 200×200（5）→ 再 2 档 500×500（2）→ 再 2 档及以上 1000×1000（1 单位/格）。像素间隔按画布宽/高分别换算，所以**单元格长宽比随画布长宽比变化**（归一化空间里是均格的）。
+- **网格吸附**：仅在 **Show grid 勾选**时，当前缩放等级下的网格对编辑操作生效——拖动移动时吸附移动后的原点（尺寸不变）、四角缩放时吸附被抓取的边（对边不动，吸附越界时以约束为准）、创建元素时吸附原点。小于半格的移动会吸附回原位（不产生位移）。
+- **中心对齐辅助线**：拖动元素时，若其他元素的垂直中心线（x 中心）或水平中心线（y 中心）与拖动元素对应中心线距离 ≤ `ALIGN_GUIDE_THRESHOLD`（10 个 0–1000 单位），在画布上画出该元素中心线的全长红线（1px 红色），并**高亮对应元素**（红色 2px 边框）；最近的一条线各取一条（垂直/水平各一）。松手后辅助线和高亮消失。
 - 背景图 = 历史中当前选中的那张（默认最新），`resizeMode=cover` 铺满画布。
 - `refinedData` 不存在时显示占位文字 "Canvas Area"。
 
@@ -197,7 +201,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - `photo` / `art_style` **有且仅留其一**：
   - 两者都有 → 按 `medium` 裁决：medium 含 "photo" 留 `photo`，否则留 `art_style`；
   - 只有其一 → 原样保留；
-  - 都没有 → 按 medium 补中性默认值（photograph → `photo: "35mm, natural light"`；其他 → `art_style = medium` 或 `"digital illustration"`）。
+  - 都没有 → 保留 medium 对应的那个键（置空字符串），不编造默认值（避免与 prompt 自带描述冲突）。
 - key 按文档顺序重建：photo 模式 `aesthetics, lighting, photo, medium, color_palette`；非 photo 模式 `aesthetics, lighting, medium, art_style, color_palette`；空字符串字段省略。
 - `color_palette`：过滤非法 hex、转大写、截断到 16 个。
 

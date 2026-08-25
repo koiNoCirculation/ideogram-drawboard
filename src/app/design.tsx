@@ -43,6 +43,32 @@ function parseRewrittenCaption(content: string): RefinedPrompt {
 /** Minimum drag distance in canvas pixels for a create-drag to count (vs a click). */
 const MIN_CREATE_DRAG_PX = 12;
 
+// Wheel zoom of the canvas (elements scale with it; the surrounding UI does not).
+const CANVAS_MIN_ZOOM = 1;
+const CANVAS_MAX_ZOOM = 8;
+const CANVAS_WHEEL_ZOOM_FACTOR = 1.1;
+
+/**
+ * Center-alignment guides: while dragging, the nearest other element's center
+ * line is shown (and its element highlighted) when its center is within this
+ * many 0-1000 units of the dragged element's center.
+ */
+const ALIGN_GUIDE_THRESHOLD = 10;
+
+/**
+ * Grid cell size in Ideogram bbox units (0-1000 space). The grid gets finer
+ * with each pair of wheel steps (×factor per step): 100×100 cells (10 units)
+ * at the base level, 200×200 (5) after 2 steps, 500×500 (2) after 4, and
+ * 1000×1000 (1) from 6 steps up to max zoom.
+ */
+const gridCellUnits = (zoom: number): number => {
+    const f = CANVAS_WHEEL_ZOOM_FACTOR;
+    if (zoom >= f ** 6) return 1;
+    if (zoom >= f ** 4) return 2;
+    if (zoom >= f ** 2) return 5;
+    return 10;
+};
+
 /**
  * Undo/redo history: one snapshot per completed user action (a drag/resize
  * that actually moved, a text/desc edit, an element add/remove, a palette
@@ -97,6 +123,9 @@ export default function DesignScreen() {
     const [refinedData, setRefinedData] = useState<RefinedPrompt | null>(null);
     const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
     const [canvasAreaSize, setCanvasAreaSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    // Wheel zoom applied to the canvas (and its elements) only; >1 makes the
+    // canvas area scrollable so the enlarged canvas can be panned.
+    const [canvasZoom, setCanvasZoom] = useState(CANVAS_MIN_ZOOM);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     // Base bbox captured when a drag starts; live moves are computed from it so
     // the element's moving position never feeds back into the gesture delta.
@@ -187,6 +216,16 @@ export default function DesignScreen() {
     // "Show elements" checkbox (top-right of the canvas area): when unchecked,
     // the prompt's element boxes are hidden from the canvas.
     const [showElements, setShowElements] = useState(true);
+    // "Show grid" checkbox: when unchecked the grid overlay is hidden and
+    // grid snapping is disabled.
+    const [showGrid, setShowGrid] = useState(true);
+    // Center-alignment guides while dragging: the nearest other element's
+    // vertical/horizontal center line (position in 0-1000 units + that
+    // element's index, which gets highlighted).
+    const [alignGuides, setAlignGuides] = useState<{
+        v: { x: number; index: number } | null;
+        h: { y: number; index: number } | null;
+    }>({ v: null, h: null });
     // Settings dialog (opened from the gear icon in the header).
     const [showSettings, setShowSettings] = useState(false);
     // Live rectangle (canvas px) of the element currently being created by dragging.
@@ -209,9 +248,11 @@ export default function DesignScreen() {
             // A freshly loaded caption's descs match its bboxes: no rewrite
             // needed until the user moves or resizes a box.
             bboxEditedRef.current = false;
-            // A freshly loaded (or re-opened) design starts with clean history.
+            // A freshly loaded (or re-opened) design starts with clean history
+            // and a reset zoom.
             pendingSnapshotRef.current = null;
             setUndoState({ past: [], future: [] });
+            setCanvasZoom(CANVAS_MIN_ZOOM);
 
             // Use the high level description as the initial title
             if (parsed.high_level_description) {
@@ -245,13 +286,22 @@ export default function DesignScreen() {
     }, [params.promptData, params.size, params.images]);
 
 
-    // Scale the requested canvas size to fit the available area, preserving aspect ratio.
+    // Scale the requested canvas size to fit the available area, preserving aspect ratio,
+    // then apply the wheel zoom (canvas + elements only; the outer UI is unscaled).
     const scale = canvasSize.width > 0 && canvasSize.height > 0 && canvasAreaSize.width > 0
         ? Math.min(canvasAreaSize.width / canvasSize.width, canvasAreaSize.height / canvasSize.height)
         : 0;
     const displaySize = {
-        width: canvasSize.width * scale,
-        height: canvasSize.height * scale,
+        width: canvasSize.width * scale * canvasZoom,
+        height: canvasSize.height * scale * canvasZoom,
+    };
+
+    // Snap a 0-1000 coordinate to the grid of the current zoom level.
+    // Snapping only happens while the grid is shown.
+    const snapToGrid = (v: number): number => {
+        if (!showGrid) return Math.round(v);
+        const cell = gridCellUnits(canvasZoom);
+        return Math.min(1000, Math.max(0, Math.round(v / cell) * cell));
     };
 
     // Convert a normalized (0-1000) bbox into pixel geometry on the canvas.
@@ -289,11 +339,31 @@ export default function DesignScreen() {
         const dx = (dxPx / displaySize.width) * 1000;
         const dy = (dyPx / displaySize.height) * 1000;
         const [yMin, xMin, yMax, xMax] = drag.baseBbox;
-        const clamped = clampBbox([yMin + dy, xMin + dx, yMax + dy, xMax + dx]);
+        // Snap the moved origin to the current grid; the box size is kept.
+        const nyMin = snapToGrid(yMin + dy);
+        const nxMin = snapToGrid(xMin + dx);
+        const clamped = clampBbox([nyMin, nxMin, nyMin + (yMax - yMin), nxMin + (xMax - xMin)]);
         // Only a real change (post-clamp) counts as an edit — drags that
         // no-op against the canvas edge keep the descs valid.
         if (clamped.some((v, i) => v !== drag.baseBbox[i])) bboxEditedRef.current = true;
         const { index } = drag;
+        // Alignment guides: the nearest other element whose vertical
+        // (x-center) / horizontal (y-center) center line is close to the
+        // dragged element's center line.
+        const myCx = (clamped[1] + clamped[3]) / 2;
+        const myCy = (clamped[0] + clamped[2]) / 2;
+        let bestV: { x: number; index: number } | null = null;
+        let bestH: { y: number; index: number } | null = null;
+        let bestVD = ALIGN_GUIDE_THRESHOLD + 1;
+        let bestHD = ALIGN_GUIDE_THRESHOLD + 1;
+        refinedData?.compositional_deconstruction.elements.forEach((el, i) => {
+            if (i === index || !el.bbox) return;
+            const dV = Math.abs((el.bbox[1] + el.bbox[3]) / 2 - myCx);
+            if (dV <= bestVD) { bestVD = dV; bestV = { x: (el.bbox[1] + el.bbox[3]) / 2, index: i }; }
+            const dH = Math.abs((el.bbox[0] + el.bbox[2]) / 2 - myCy);
+            if (dH <= bestHD) { bestHD = dH; bestH = { y: (el.bbox[0] + el.bbox[2]) / 2, index: i }; }
+        });
+        setAlignGuides({ v: bestV, h: bestH });
         setRefinedData((prev) => {
             if (!prev) return prev;
             const elements = prev.compositional_deconstruction.elements.map((el, i) =>
@@ -314,6 +384,7 @@ export default function DesignScreen() {
             pendingSnapshotRef.current = null;
         }
         dragBaseRef.current = null;
+        setAlignGuides({ v: null, h: null });
     };
 
     const handleResizeStart = (index: number, corner: Corner) => {
@@ -333,11 +404,17 @@ export default function DesignScreen() {
         const [yMin, xMin, yMax, xMax] = resize.baseBbox;
         const { corner } = resize;
         const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+        // Snap the grabbed edge to the current grid (the opposite edge stays).
         let nxMin = xMin, nxMax = xMax, nyMin = yMin, nyMax = yMax;
-        if (corner === 'nw' || corner === 'sw') nxMin = clamp(xMin + dx, 0, xMax - MIN_ELEMENT_SIZE);
-        if (corner === 'ne' || corner === 'se') nxMax = clamp(xMax + dx, xMin + MIN_ELEMENT_SIZE, 1000);
-        if (corner === 'nw' || corner === 'ne') nyMin = clamp(yMin + dy, 0, yMax - MIN_ELEMENT_SIZE);
-        if (corner === 'sw' || corner === 'se') nyMax = clamp(yMax + dy, yMin + MIN_ELEMENT_SIZE, 1000);
+        if (corner === 'nw' || corner === 'sw') nxMin = snapToGrid(clamp(xMin + dx, 0, xMax - MIN_ELEMENT_SIZE));
+        if (corner === 'ne' || corner === 'se') nxMax = snapToGrid(clamp(xMax + dx, xMin + MIN_ELEMENT_SIZE, 1000));
+        if (corner === 'nw' || corner === 'ne') nyMin = snapToGrid(clamp(yMin + dy, 0, yMax - MIN_ELEMENT_SIZE));
+        if (corner === 'sw' || corner === 'se') nyMax = snapToGrid(clamp(yMax + dy, yMin + MIN_ELEMENT_SIZE, 1000));
+        // Snapping may have crossed the opposite edge — re-clamp (constraints win).
+        nxMin = clamp(nxMin, 0, xMax - MIN_ELEMENT_SIZE);
+        nxMax = clamp(nxMax, xMin + MIN_ELEMENT_SIZE, 1000);
+        nyMin = clamp(nyMin, 0, yMax - MIN_ELEMENT_SIZE);
+        nyMax = clamp(nyMax, yMin + MIN_ELEMENT_SIZE, 1000);
         const newBbox: [number, number, number, number] = [
             Math.round(nyMin), Math.round(nxMin), Math.round(nyMax), Math.round(nxMax),
         ];
@@ -532,10 +609,10 @@ export default function DesignScreen() {
             setCreateDraft(null);
             // A plain click (no real drag) creates nothing.
             if (wPx < MIN_CREATE_DRAG_PX || hPx < MIN_CREATE_DRAG_PX) return;
-            // Convert to a normalized (0-1000) bbox, clamped to the canvas,
-            // and enforce the minimum element size.
-            const xMin = Math.max(0, Math.round((Math.min(base.xPx, x) / displaySize.width) * 1000));
-            const yMin = Math.max(0, Math.round((Math.min(base.yPx, y) / displaySize.height) * 1000));
+            // Convert to a normalized (0-1000) bbox, snap the origin to the
+            // current grid, clamp to the canvas, enforce the minimum size.
+            const xMin = Math.min(1000 - MIN_ELEMENT_SIZE, snapToGrid(Math.round((Math.min(base.xPx, x) / displaySize.width) * 1000)));
+            const yMin = Math.min(1000 - MIN_ELEMENT_SIZE, snapToGrid(Math.round((Math.min(base.yPx, y) / displaySize.height) * 1000)));
             let xMax = Math.min(1000, Math.round(((Math.min(base.xPx, x) + wPx) / displaySize.width) * 1000));
             let yMax = Math.min(1000, Math.round(((Math.min(base.yPx, y) + hPx) / displaySize.height) * 1000));
             if (xMax - xMin < MIN_ELEMENT_SIZE) xMax = Math.min(1000, xMin + MIN_ELEMENT_SIZE);
@@ -555,7 +632,39 @@ export default function DesignScreen() {
             window.removeEventListener('pointerup', onUp);
             window.removeEventListener('pointercancel', onCancel);
         };
-    }, [isCreating, displaySize.width, displaySize.height]);
+    }, [isCreating, displaySize.width, displaySize.height, showGrid]);
+
+    // Mouse wheel over the canvas area zooms the canvas (web). A native
+    // non-passive listener so preventDefault stops the container scrolling at
+    // the same time — panning an enlarged canvas is done via the scrollbars.
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const node = document.querySelector('[data-testid="canvas-sizer"]') as HTMLElement | null;
+        if (!node) return;
+        const onWheel = (e: WheelEvent) => {
+            if (e.deltaY === 0) return; // horizontal trackpad pans scroll natively
+            e.preventDefault();
+            setCanvasZoom((z) => {
+                const next = e.deltaY < 0 ? z * CANVAS_WHEEL_ZOOM_FACTOR : z / CANVAS_WHEEL_ZOOM_FACTOR;
+                return Math.min(CANVAS_MAX_ZOOM, Math.max(CANVAS_MIN_ZOOM, next));
+            });
+        };
+        node.addEventListener('wheel', onWheel, { passive: false });
+        return () => node.removeEventListener('wheel', onWheel);
+    }, []);
+
+    // Zoom toward the center: after each zoom step, scroll the (overflowing)
+    // canvas area so the canvas center stays at the viewport center.
+    useEffect(() => {
+        if (typeof document === 'undefined' || canvasZoom <= 1) return;
+        const node = document.querySelector('[data-testid="canvas-sizer"]') as HTMLElement | null;
+        if (!node) return;
+        const id = requestAnimationFrame(() => {
+            node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2;
+            node.scrollTop = (node.scrollHeight - node.clientHeight) / 2;
+        });
+        return () => cancelAnimationFrame(id);
+    }, [canvasZoom]);
 
     // Escape cancels the active creation tool (and any in-flight create-drag).
     useEffect(() => {
@@ -857,21 +966,44 @@ export default function DesignScreen() {
 
                     {/* Canvas Placeholder */}
                     <View style={styles.canvasContainer}>
-                        {/* "Show elements" toggle, pinned to the canvas area's
-                            top-right corner: hides/shows the prompt's element boxes. */}
-                        <TouchableOpacity
-                            testID="show-elements-toggle"
-                            style={styles.showElementsToggle}
-                            onPress={() => setShowElements((v) => !v)}
-                        >
-                            <View style={[styles.checkbox, showElements && styles.checkboxChecked]}>
-                                {showElements && <Check size={11} color="#FFFFFF" />}
-                            </View>
-                            <Text style={styles.checkboxLabel}>Show elements</Text>
-                        </TouchableOpacity>
+                        {/* "Show grid" / "Show elements" toggles, pinned to the
+                            canvas area's top-right corner. */}
+                        <View style={styles.canvasToggles}>
+                            <TouchableOpacity
+                                testID="show-grid-toggle"
+                                style={[styles.showElementsToggle, { marginRight: 16 }]}
+                                onPress={() => setShowGrid((v) => !v)}
+                            >
+                                <View style={[styles.checkbox, showGrid && styles.checkboxChecked]}>
+                                    {showGrid && <Check size={11} color="#FFFFFF" />}
+                                </View>
+                                <Text style={styles.checkboxLabel}>Show grid</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                testID="show-elements-toggle"
+                                style={styles.showElementsToggle}
+                                onPress={() => setShowElements((v) => !v)}
+                            >
+                                <View style={[styles.checkbox, showElements && styles.checkboxChecked]}>
+                                    {showElements && <Check size={11} color="#FFFFFF" />}
+                                </View>
+                                <Text style={styles.checkboxLabel}>Show elements</Text>
+                            </TouchableOpacity>
+                        </View>
 
                         <View
-                            style={styles.canvasSizer}
+                            testID="canvas-sizer"
+                            style={[
+                                styles.canvasSizer,
+                                // Zoomed: the canvas overflows the area, so make
+                                // it scrollable (and top-left aligned — centering
+                                // an overflowing flex child clips its top/left).
+                                canvasZoom > 1 && {
+                                    overflow: 'scroll',
+                                    alignItems: 'flex-start',
+                                    justifyContent: 'flex-start',
+                                },
+                            ]}
                             onLayout={(e) => {
                                 setCanvasAreaSize({
                                     width: e.nativeEvent.layout.width,
@@ -882,7 +1014,11 @@ export default function DesignScreen() {
                             <View
                                 style={[
                                     styles.canvas,
-                                    { width: displaySize.width, height: displaySize.height },
+                                    // Auto margins center the canvas on any axis
+                                    // that still fits while zoomed (and collapse
+                                    // to 0 on overflowing axes, keeping the
+                                    // whole canvas scrollable).
+                                    { width: displaySize.width, height: displaySize.height, margin: 'auto' },
                                     // Web: crosshair while a creation tool is armed.
                                     (activeTool ? { cursor: 'crosshair' } : {}) as any,
                                 ]}
@@ -898,6 +1034,26 @@ export default function DesignScreen() {
                                             { width: displaySize.width, height: displaySize.height },
                                         ]}
                                         resizeMode="cover"
+                                    />
+                                )}
+
+                                {/* Grid overlay: follows the zoom level (10×10 ->
+                                    50×50 -> 250×250 -> 1000×1000 cells in the 0-1000
+                                    bbox space); pixel cell size is derived per axis,
+                                    so the cell aspect follows the canvas aspect. */}
+                                {displaySize.width > 0 && showGrid && (
+                                    <View
+                                        pointerEvents="none"
+                                        style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                            // High-contrast lines (near-black at 45%) so the
+                                            // grid stays visible on white and on photos alike.
+                                            backgroundImage: `repeating-linear-gradient(to right, rgba(0, 0, 0, 0.45) 0, rgba(0, 0, 0, 0.45) 1px, transparent 1px, transparent ${(gridCellUnits(canvasZoom) / 1000) * displaySize.width}px), repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.45) 0, rgba(0, 0, 0, 0.45) 1px, transparent 1px, transparent ${(gridCellUnits(canvasZoom) / 1000) * displaySize.height}px)`,
+                                        } as any}
                                     />
                                 )}
 
@@ -930,10 +1086,43 @@ export default function DesignScreen() {
                                                     onContextMenu={(e) => openContextMenu(index, e)}
                                                     empty={showEmptyHighlight && isEmptyElement(element)}
                                                     flashOn={flashOn}
+                                                    highlighted={
+                                                        alignGuides.v?.index === index ||
+                                                        alignGuides.h?.index === index
+                                                    }
                                                 />
                                             );
                                         })}
                                         </View>
+
+                                        {/* Center-alignment guides while dragging:
+                                            the nearest other element's center lines. */}
+                                        {alignGuides.v && (
+                                            <View
+                                                pointerEvents="none"
+                                                style={{
+                                                    position: 'absolute',
+                                                    left: (alignGuides.v.x / 1000) * displaySize.width,
+                                                    top: 0,
+                                                    width: 1,
+                                                    height: displaySize.height,
+                                                    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+                                                }}
+                                            />
+                                        )}
+                                        {alignGuides.h && (
+                                            <View
+                                                pointerEvents="none"
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: (alignGuides.h.y / 1000) * displaySize.height,
+                                                    left: 0,
+                                                    height: 1,
+                                                    width: displaySize.width,
+                                                    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+                                                }}
+                                            />
+                                        )}
 
                                         {/* Floating tooltip for the hovered text element */}
                                         {(() => {
@@ -1303,14 +1492,19 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    // "Show elements" checkbox, pinned to the canvas area's top-right corner.
-    showElementsToggle: {
+    // "Show grid" / "Show elements" checkboxes, pinned to the canvas area's
+    // top-right corner.
+    canvasToggles: {
         position: 'absolute',
         top: 8,
         right: 12,
         flexDirection: 'row',
         alignItems: 'center',
         zIndex: 5,
+    },
+    showElementsToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     checkbox: {
         width: 16,

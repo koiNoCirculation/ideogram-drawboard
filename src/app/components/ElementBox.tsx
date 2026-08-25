@@ -47,6 +47,7 @@ export const ElementBox = ({
     onContextMenu,
     empty,
     flashOn,
+    highlighted,
 }: {
     element: CanvasElement;
     left: number;
@@ -68,6 +69,8 @@ export const ElementBox = ({
     empty?: boolean;
     /** Current phase of the red blink (only meaningful while `empty`). */
     flashOn?: boolean;
+    /** True while a dragged element aligns with this element's center line. */
+    highlighted?: boolean;
 }) => {
     const isText = element.type === 'text';
 
@@ -102,6 +105,7 @@ export const ElementBox = ({
                 styles.elementBox,
                 { left, top, width, height },
                 hovered && styles.elementBoxHovered,
+                highlighted && styles.elementBoxHighlighted,
                 empty && styles.elementBoxEmpty,
                 empty && flashOn && styles.elementBoxEmptyFlash,
             ]}
@@ -211,6 +215,11 @@ const styles = StyleSheet.create({
     },
     elementBoxHovered: {
         backgroundColor: '#FFFFFF',
+    },
+    // Alignment-highlighted element (its center line is guiding a drag).
+    elementBoxHighlighted: {
+        borderColor: '#FF3B30',
+        borderWidth: 2,
     },
     // Empty-element warning: solid red border (shown after a blocked generate).
     elementBoxEmpty: {

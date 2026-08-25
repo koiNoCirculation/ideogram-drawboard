@@ -54,15 +54,15 @@ test('only art_style present: kept unchanged', () => {
     expect(result.style_description?.photo).toBeUndefined();
 });
 
-test('neither present + photo medium: a neutral photo default is filled in', () => {
+test('neither present + photo medium: the photo key is kept (empty, no default invented)', () => {
     const result = normalizePromptForIdeogram(base({}));
-    expect(result.style_description?.photo).toBeTruthy();
+    expect(result.style_description?.photo).toBe('');
     expect(result.style_description?.art_style).toBeUndefined();
 });
 
-test('neither present + non-photo medium: art_style defaults to the medium', () => {
+test('neither present + non-photo medium: the art_style key is kept (empty, no default invented)', () => {
     const result = normalizePromptForIdeogram(base({ medium: 'painting' }));
-    expect(result.style_description?.art_style).toBe('painting');
+    expect(result.style_description?.art_style).toBe('');
     expect(result.style_description?.photo).toBeUndefined();
 });
 
