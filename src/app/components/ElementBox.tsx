@@ -1,5 +1,5 @@
 import { Image as ImageIcon } from 'lucide-react-native';
-import { useRef } from 'react';
+import { RefObject, useRef } from 'react';
 import { PanResponder, StyleSheet, Text, TextStyle, View } from 'react-native';
 import { CanvasElement } from '../types';
 
@@ -78,6 +78,12 @@ export const ElementBox = ({
     // corner go to the resize handles instead of moving the element.
     const moveInset = Math.min(14, Math.max(0, Math.floor(Math.min(width, height) / 4)));
 
+    // Which resize zone (if any) the latest pointerdown started on. RN-web
+    // negotiates the responder from each MOVE event's DOM target, so a handle
+    // must only claim gestures that BEGAN on its zone — otherwise a move-drag
+    // that sweeps through the corner would be stolen by the handle mid-gesture.
+    const zonePressRef = useRef<Corner | null>(null);
+
     // The PanResponder is created once, so route through refs to always call
     // the latest parent handlers (they capture displaySize at render time).
     const dragStartRef = useRef(onDragStart);
@@ -89,7 +95,14 @@ export const ElementBox = ({
 
     const panResponder = useRef(
         PanResponder.create({
-            // Small slop so taps/hovers are unaffected.
+            // Small slop so taps/hovers are unaffected. Kept at 3px (larger
+            // than the resize zones' 2px) so the move is always granted at
+            // the 6px trigger step: RN-web's PanResponder resets the gesture
+            // delta on grant, so granting one step earlier would shift every
+            // drag's effective delta by 3px. A press that starts inside the
+            // 10.5px dead band next to a corner simply no-ops (as before
+            // this feature) instead of being stolen by the enlarged zone —
+            // the zone only claims gestures that began on it (zonePressRef).
             onMoveShouldSetPanResponder: (_e, g) =>
                 Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
             onPanResponderGrant: () => dragStartRef.current(),
@@ -111,6 +124,9 @@ export const ElementBox = ({
             ]}
             onPointerEnter={onHoverIn}
             onPointerLeave={onHoverOut}
+            // Any press inside the box clears the zone claim; a press that
+            // starts on a resize zone re-sets it (the zone stops propagation).
+            onPointerDown={() => { zonePressRef.current = null; }}
             // React Native Web maps this to the DOM `contextmenu` event (right-click).
             // It's not in the `react-native` type defs, hence the spread cast.
             {...({ onContextMenu } as Record<string, any>)}
@@ -151,6 +167,7 @@ export const ElementBox = ({
                 <ResizeHandle
                     key={corner}
                     corner={corner}
+                    zonePressRef={zonePressRef}
                     onResizeStart={() => onResizeStart(corner)}
                     onResizeMove={onResizeMove}
                     onResizeEnd={onResizeEnd}
@@ -166,11 +183,13 @@ export const ElementBox = ({
  */
 const ResizeHandle = ({
     corner,
+    zonePressRef,
     onResizeStart,
     onResizeMove,
     onResizeEnd,
 }: {
     corner: Corner;
+    zonePressRef: RefObject<Corner | null>;
     onResizeStart: () => void;
     onResizeMove: (dxPx: number, dyPx: number) => void;
     onResizeEnd: () => void;
@@ -185,7 +204,10 @@ const ResizeHandle = ({
     const panResponder = useRef(
         PanResponder.create({
             onMoveShouldSetPanResponder: (_e, g) =>
-                Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2,
+                // Claim only a gesture that started on this zone (see
+                // zonePressRef in ElementBox).
+                zonePressRef.current === corner &&
+                (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
             onPanResponderGrant: () => startRef.current(),
             onPanResponderMove: (_e, g) => moveRef.current(g.dx, g.dy),
             onPanResponderRelease: () => endRef.current(),
@@ -194,11 +216,26 @@ const ResizeHandle = ({
     ).current;
 
     return (
+        // The hit area is an explicit 21x21 transparent square (1.5x the
+        // 14x14 visible handle): RN-web hit-tests with the browser and ignores
+        // hitSlop on plain Views (only Touchables expand their press region),
+        // so without this only the 14x14 alone would grab a resize. hitSlop is
+        // kept for native, where the responder system does honor it.
         <View
-            style={[styles.resizeHandle, styles[`resizeHandle_${corner}`]]}
+            style={[styles.resizeHit, styles[`resizeHit_${corner}`]]}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            onPointerDown={(e: any) => {
+                // Record that the press began on this zone, and keep the
+                // box's reset handler (bubbling) from clearing it. Safe to
+                // stop: the responder system listens to mousedown, not
+                // pointerdown.
+                e?.stopPropagation?.();
+                zonePressRef.current = corner;
+            }}
             {...panResponder.panHandlers}
-        />
+        >
+            <View style={styles.resizeHandle} />
+        </View>
     );
 };
 
@@ -280,8 +317,20 @@ const styles = StyleSheet.create({
     elementMoveArea: {
         position: 'absolute',
     },
-    resizeHandle: {
+    // Invisible hit target, centered on the corner: 21x21 (1.5x the visible
+    // 14x14 handle) so a near-miss still grabs the resize.
+    resizeHit: {
         position: 'absolute',
+        width: 21,
+        height: 21,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    resizeHit_nw: { top: -10.5, left: -10.5 },
+    resizeHit_ne: { top: -10.5, right: -10.5 },
+    resizeHit_sw: { bottom: -10.5, left: -10.5 },
+    resizeHit_se: { bottom: -10.5, right: -10.5 },
+    resizeHandle: {
         width: 14,
         height: 14,
         backgroundColor: '#FFFFFF',
@@ -289,10 +338,6 @@ const styles = StyleSheet.create({
         borderColor: '#007AFF',
         borderRadius: 3,
     },
-    resizeHandle_nw: { top: -7, left: -7 },
-    resizeHandle_ne: { top: -7, right: -7 },
-    resizeHandle_sw: { bottom: -7, left: -7 },
-    resizeHandle_se: { bottom: -7, right: -7 },
 });
 
 /**

@@ -321,6 +321,7 @@ export default function DesignScreen() {
                         onResizeMove={interaction.handleResizeMove}
                         onResizeEnd={interaction.handleResizeEnd}
                         onContextMenu={editing.openContextMenu}
+                        onCanvasContextMenu={editing.openCanvasContextMenu}
                         createDraft={interaction.createDraft}
                         images={generation.images}
                         shownIndex={generation.shownIndex}
@@ -335,12 +336,21 @@ export default function DesignScreen() {
                 </View>
             </View>
 
-            {/* Right-click context menu for an element box. */}
+            {/* Right-click context menu: the element box's full menu, or the
+                Paste-only menu after a right-click on empty canvas (index
+                null). */}
             {editing.contextMenu && (
                 <ContextMenu
                     menu={editing.contextMenu}
-                    element={elements[editing.contextMenu.index]}
+                    element={
+                        editing.contextMenu.index === null
+                            ? undefined
+                            : elements[editing.contextMenu.index]
+                    }
+                    canPaste={editing.copiedElement !== null}
                     onClose={() => editing.setContextMenu(null)}
+                    onCopy={editing.copyElement}
+                    onPaste={editing.pasteElement}
                     onEditDesc={() => editing.openEditor('desc')}
                     onEditText={() => editing.openEditor('text')}
                     onDelete={editing.deleteElement}

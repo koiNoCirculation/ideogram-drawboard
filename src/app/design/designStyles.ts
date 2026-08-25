@@ -371,6 +371,10 @@ export const styles = StyleSheet.create({
         fontSize: 14,
         color: '#333',
     },
+    // Inert menu item (e.g. Paste with an empty clipboard).
+    contextMenuItemDisabled: {
+        opacity: 0.4,
+    },
     contextMenuDivider: {
         height: 1,
         backgroundColor: '#EEE',

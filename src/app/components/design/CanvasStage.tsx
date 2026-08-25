@@ -45,6 +45,7 @@ export const CanvasStage = ({
     onResizeMove,
     onResizeEnd,
     onContextMenu,
+    onCanvasContextMenu,
     createDraft,
     images,
     shownIndex,
@@ -81,6 +82,8 @@ export const CanvasStage = ({
     onResizeMove: (dxPx: number, dyPx: number) => void;
     onResizeEnd: () => void;
     onContextMenu: (index: number, e: any) => void;
+    /** Right-click on empty canvas (not an element box): the Paste-only menu. */
+    onCanvasContextMenu: (e: any) => void;
     createDraft: { left: number; top: number; width: number; height: number } | null;
     images: string[];
     shownIndex: number;
@@ -164,6 +167,10 @@ export const CanvasStage = ({
                     (activeTool ? { cursor: 'crosshair' } : {}) as any,
                 ]}
                 onPointerDown={onCanvasPointerDown}
+                // Right-click on empty canvas: the Paste-only menu. Element
+                // boxes stopPropagation, so a box right-click only opens the
+                // element's full menu.
+                {...({ onContextMenu: onCanvasContextMenu } as Record<string, any>)}
             >
                 {/* Generated image: rendered first so the element boxes overlay it.
                     Shows the latest image by default (see shownImage). */}
@@ -225,7 +232,13 @@ export const CanvasStage = ({
                                         onResizeStart={(corner) => onResizeStart(index, corner)}
                                         onResizeMove={onResizeMove}
                                         onResizeEnd={onResizeEnd}
-                                        onContextMenu={(e) => onContextMenu(index, e)}
+                                        onContextMenu={(e) => {
+                                            // Consume the box's right-click so it doesn't
+                                            // bubble to the canvas's Paste-only menu.
+                                            e?.stopPropagation?.();
+                                            e?.nativeEvent?.stopPropagation?.();
+                                            onContextMenu(index, e);
+                                        }}
                                         empty={showEmptyHighlight && isEmptyElement(element)}
                                         flashOn={flashOn}
                                         highlighted={

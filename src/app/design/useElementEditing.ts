@@ -1,15 +1,19 @@
-import { Dispatch, RefObject, SetStateAction, useState } from 'react';
+import { Dispatch, RefObject, SetStateAction, useRef, useState } from 'react';
 import { CanvasElement, RefinedPrompt } from '../types';
+import { clampBbox } from './canvas';
 import { DEFAULT_TEXT_FONT_SIZE } from './constants';
 
 export type EditField = 'desc' | 'text';
 export type FontOpt = { size: string; font: string; bold: boolean; italic: boolean };
 
+/** 0-1000 units a pasted element is offset from the previous position. */
+const PASTE_OFFSET = 20;
+
 /**
- * Right-click context menu + element field editor (desc / text, with the
- * text-only font options) + element deletion. `extra_fontoption` stores only
- * the user's explicitly-changed (non-default) keys, so the prompt's own
- * default font description is never overridden.
+ * Right-click context menu (copy / paste / edit / delete) + element field
+ * editor (desc / text, with the text-only font options). `extra_fontoption`
+ * stores only the user's explicitly-changed (non-default) keys, so the
+ * prompt's own default font description is never overridden.
  */
 export function useElementEditing(
     refinedData: RefinedPrompt | null,
@@ -17,8 +21,9 @@ export function useElementEditing(
     recordAction: () => void,
     bboxEditedRef: RefObject<boolean>,
 ) {
-    // Right-click context menu on an element box: its index and viewport position.
-    const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
+    // Right-click context menu: its viewport position and target — an element
+    // index (full menu) or null (a right-click on empty canvas: Paste only).
+    const [contextMenu, setContextMenu] = useState<{ index: number | null; x: number; y: number } | null>(null);
     // Element field editor dialog: which element and which field (desc | text).
     const [editing, setEditing] = useState<{ index: number; field: EditField } | null>(null);
     // The value being edited in the dialog's input.
@@ -27,19 +32,21 @@ export function useElementEditing(
     const [fontOpt, setFontOpt] = useState<FontOpt>({ size: String(DEFAULT_TEXT_FONT_SIZE), font: '', bold: false, italic: false });
     // Whether the font-size preset dropdown is open.
     const [sizeMenuOpen, setSizeMenuOpen] = useState(false);
+    // In-app clipboard: the last copied element. Deep-cloned at copy time so
+    // later edits to the original never leak into the clipboard.
+    const [copiedElement, setCopiedElement] = useState<CanvasElement | null>(null);
+    // The bbox the next paste offsets from: the copied bbox, then each
+    // successive paste's result, so consecutive pastes cascade apart.
+    const pasteBaseRef = useRef<[number, number, number, number] | null>(null);
 
-    // Right-click an element box: open the context menu at the cursor,
-    // clamped so the menu stays inside the viewport.
-    const openContextMenu = (index: number, e: any) => {
+    // Shared menu opener: clamps the (item-count-sized) menu to the viewport.
+    const openMenuAt = (index: number | null, e: any, itemCount: number) => {
         // Suppress the browser's native context menu.
         e?.preventDefault?.();
         e?.nativeEvent?.preventDefault?.();
         const point = e?.nativeEvent ?? e ?? {};
-        const element = refinedData?.compositional_deconstruction.elements[index];
         const itemH = 36;
         const menuW = 180;
-        // Edit description (+ Edit text for text elements) plus Delete.
-        const itemCount = (element?.type === 'text' ? 2 : 1) + 1;
         const menuH = 12 + itemH * itemCount + 10;
         const vw = window.innerWidth || 1280;
         const vh = window.innerHeight || 800;
@@ -50,9 +57,19 @@ export function useElementEditing(
         });
     };
 
+    // Right-click an element box: open the full context menu at the cursor.
+    const openContextMenu = (index: number, e: any) => {
+        const element = refinedData?.compositional_deconstruction.elements[index];
+        // Copy + Paste + Edit description (+ Edit text for text elements) + Delete.
+        openMenuAt(index, e, (element?.type === 'text' ? 2 : 1) + 3);
+    };
+
+    // Right-click empty canvas: a Paste-only menu (same in-app clipboard).
+    const openCanvasContextMenu = (e: any) => openMenuAt(null, e, 1);
+
     // Open the edit dialog for the field of the context-menu target element.
     const openEditor = (field: EditField) => {
-        if (!contextMenu) return;
+        if (!contextMenu || contextMenu.index === null) return;
         const { index } = contextMenu;
         const element = refinedData?.compositional_deconstruction.elements[index];
         setContextMenu(null);
@@ -124,9 +141,47 @@ export function useElementEditing(
         setEditing(null);
     };
 
+    // Copy the context-menu target element into the in-app clipboard.
+    // Closes the menu on the action, like the other menu items.
+    const copyElement = () => {
+        // The canvas (Paste-only) menu has no element to copy.
+        if (!contextMenu || contextMenu.index === null) return;
+        const element = refinedData?.compositional_deconstruction.elements[contextMenu.index];
+        setContextMenu(null);
+        if (!element) return;
+        setCopiedElement(JSON.parse(JSON.stringify(element)));
+        pasteBaseRef.current = element.bbox ? [...element.bbox] : null;
+    };
+
+    // Paste the clipboard element as a new element at the end of the list
+    // (front-most, last layer-list row), offset PASTE_OFFSET from the
+    // previous paste position and clamped to the canvas. One undo step.
+    const pasteElement = () => {
+        setContextMenu(null);
+        if (!copiedElement) return;
+        const source = pasteBaseRef.current ?? copiedElement.bbox ?? null;
+        const bbox = source
+            ? clampBbox([source[0] + PASTE_OFFSET, source[1] + PASTE_OFFSET, source[2] + PASTE_OFFSET, source[3] + PASTE_OFFSET])
+            : undefined;
+        // The pasted desc was written for the copied bbox: re-arm the LLM
+        // rewrite only when the offset (after clamping) actually moved the box.
+        if (bbox && source && bbox.some((v, i) => v !== source[i])) {
+            bboxEditedRef.current = true;
+        }
+        pasteBaseRef.current = bbox ?? null;
+        recordAction();
+        setRefinedData((prev) => {
+            if (!prev) return prev;
+            const { visible: _v, ...rest } = JSON.parse(JSON.stringify(copiedElement)) as CanvasElement;
+            const next: CanvasElement = bbox ? { ...rest, bbox } : { ...rest };
+            const elements = [...prev.compositional_deconstruction.elements, next];
+            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
+        });
+    };
+
     // Remove the context-menu target element from the caption and close the menu.
     const deleteElement = () => {
-        if (!contextMenu) return;
+        if (!contextMenu || contextMenu.index === null) return;
         const { index } = contextMenu;
         setContextMenu(null);
         recordAction();
@@ -149,8 +204,12 @@ export function useElementEditing(
         sizeMenuOpen,
         setSizeMenuOpen,
         openContextMenu,
+        openCanvasContextMenu,
         openEditor,
         saveEdit,
+        copyElement,
+        pasteElement,
+        copiedElement,
         deleteElement,
     };
 }

@@ -19,7 +19,7 @@ src/app/
     designStyles.ts      设计页全部 StyleSheet（不计入行数约束）
     useHistory.ts        快照式撤销/重做（begin/commit/cancel/recordAction/undo/redo/reset）
     useCanvasInteraction.ts  画布拖动/缩放（中心对齐辅助线）+ 拖拽创建元素
-    useElementEditing.ts     右键菜单、desc/text 编辑对话框（含字体选项）、删除元素
+    useElementEditing.ts     右键菜单（复制/粘贴/编辑/删除）+ desc/text 编辑对话框（含字体选项）
     useGeneration.ts     生成（设置校验→空元素校验→按需改写 desc→规范化→请求）、保存、图片历史
   components/
     ElementBox.tsx       画布上的单个元素框（拖动、四角缩放、右键菜单载体）
@@ -34,7 +34,7 @@ src/app/
       MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
       HistoryStrip.tsx   生成图缩略图横条
       GenerateRow.tsx    Save + Generate 按钮行（保存成功提示、错误行）
-      ContextMenu.tsx    元素右键菜单
+      ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
       EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
   services/
     PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
@@ -148,6 +148,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - **网格吸附**：仅在 **Show grid 勾选**时，当前缩放等级下的网格对编辑操作生效——拖动移动时吸附移动后的原点（尺寸不变）、四角缩放时吸附被抓取的边（对边不动，吸附越界时以约束为准）、创建元素时吸附原点。小于半格的移动会吸附回原位（不产生位移）。
 - **标尺（上边缘 + 左边缘，0–1000 双轴，向外延伸）**：画布外套一层外框（canvas + 左 30px + 上 20px，`margin:auto` 居中于滚动容器），两条标尺条（顶条高 20px、左条宽 30px，白底 85% 透明 + 内侧 1px 蓝边）渲染在**画布外**（顶条在画布顶边之上、左条在画布左边之左，左上角 30×20 留空），半透明条不遮挡画布内容；横轴覆盖 0–1000 单位、纵轴同。标尺在外框内渲染，**随画布一起缩放**；刻度/数字位置与网格用同一套 0–1000→px 换算，**始终与网格线对齐**。长边数字密度按滚轮档位（`rulerLabelStep`，与 `gridCellUnits` 同档）：0–1 档每 100 单位、2–3 档每 50、4–5 档每 20、5 档以上每 10——每档都是该档网格单元的整数倍，数字恒落在网格线上。**长宽比不为 1:1 时短边标尺按长宽比变稀疏**（`rulerSteps`）：短边间隔 = 长边间隔 × 长/短，且保持 10 的倍数、除不尽时向更稀疏方向取整，使两边每像素的数字密度大致一致（1:1 时两边相同；末档数字可能不到 1000，如 4:3 下短边间隔 140 → 0…980）。数字间中点位置画无数字刻度（与网格同为 `repeating-linear-gradient`，不产生逐刻度节点）；数字盒固定尺寸并钳制在标尺条内（0/1000 不越界）。标尺 pointer-events 关闭，不阻挡画布/元素交互；不随 Show grid 开关显隐。
 - **中心对齐辅助线**：拖动元素时，若其他元素的垂直中心线（x 中心）或水平中心线（y 中心）与拖动元素对应中心线距离 ≤ `ALIGN_GUIDE_THRESHOLD`（10 个 0–1000 单位），在画布上画出该元素中心线的全长红线（1px 红色），并**高亮对应元素**（红色 2px 边框）；最近的一条线各取一条（垂直/水平各一）。松手后辅助线和高亮消失。
+- **右键空白处**：右键画布空白区域（非元素框）弹出仅含 `Paste` 的菜单，与元素菜单共用同一应用内剪贴板（同样的级联偏移、每步撤销、按需重写语义，见「元素框」节）；元素框的右键会 `stopPropagation` 吞掉事件，两者互不触发。
 - 背景图 = 历史中当前选中的那张（默认最新），`resizeMode=cover` 铺满画布。
 - `refinedData` 不存在时显示占位文字 "Canvas Area"。
 
@@ -155,9 +156,10 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 每个有 `bbox` 的元素渲染为蓝色虚线框，绝对定位于画布（归一化 bbox × 显示尺寸换算像素）：
 - 左上角图标：text 元素橙色「T」，obj 元素蓝色图片图标；框内显示 `text`（text 元素）或 `desc`（obj 元素）。框与文字设 `userSelect: 'none'`（UI 标签不可选中）：web 上拖动/缩放扫过文字会触发原生文本选择，`selectionchange` 事件让 RN-web 的 responder 系统**中途终止手势**，缩放会静默卡在第一步。
 - **拖动移动**：框内部（四边内缩 `moveInset = min(14, min(w,h)/4)`）为移动热区，PanResponder 位移 >3px 生效；手势开始时记录 base bbox，实时增量 = 像素位移 ÷ 显示尺寸 × 1000，clamp 到画布内并取整后写回 `refinedData`。
-- **四角缩放**：四角 handle（14px，hitSlop 10）为子级手势，天然赢过移动热区；只拉伸被抓角落点/边，clamp 到画布与最小尺寸 `MIN_ELEMENT_SIZE = 20`（0–1000 单位），取整写回。
+- **四角缩放**：四角 handle（可见 14px）为子级手势；**web 上的命中区是显式的 21×21px 透明方块（1.5 倍可见 handle，中心对准角点）**——RN-web 用浏览器命中测试，对普通 View 忽略 `hitSlop`（只有 Touchable 会扩大按压区），`hitSlop: 10` 仅为原生保留。命中区**只认领从区内开始的手势**：pointerdown 时记录所按的角（框根上任意按下先清空），因为 RN-web 的 responder 按每个 move 事件的 DOM 目标重新协商，若不限定起点，向角部扫过的移动拖拽会中途被放大的命中区偷走手势。移动阈值保持 3px（不能降到 2px：PanResponder 在 grant 时把位移清零，grant 早一步会让所有拖拽的有效位移偏移 3px；贴角 10.5–14px 的死区按下仍为无效拖动，与本特性前一致）。只拉伸被抓角落点/边，clamp 到画布与最小尺寸 `MIN_ELEMENT_SIZE = 20`（0–1000 单位），取整写回。
 - 悬停：白底高亮；悬停 text 元素时显示黑色 tooltip（展示 `desc`，优先在框上方，空间不足翻到下方，水平钳制在画布内）。
-- **右键菜单**（RN-web 映射 DOM contextmenu）：`Edit description`（所有元素）/ `Edit text`（仅 text）/ 分隔线 / `Delete`。菜单定位钳制在视口内；点任意处（透明全屏遮罩）关闭。
+- **右键菜单**（RN-web 映射 DOM contextmenu）：`Copy` / `Paste` / 分隔线 / `Edit description`（所有元素）/ `Edit text`（仅 text）/ 分隔线 / `Delete`。菜单定位钳制在视口内；点任意处（透明全屏遮罩）关闭。右键画布空白处则弹出仅含 `Paste` 的菜单（见「画布」节）。
+  - **复制/粘贴**：`Copy` 把右键元素存为**深拷贝快照**（含 bbox、desc/text、字体选项）进应用内剪贴板（不修改文档、不记撤销）；`Paste` 在 `elements` 末尾追加新元素（最前层、图层列表最后一行），位置 = 上一次粘贴落点 + 20 单位（0–1000）偏移再 clamp 进画布（`clampBbox`），**连续粘贴级联错开**；clamp 后位置实际变化才置位 `bboxEditedRef`（desc 是针对原 bbox 写的，生成时按需重写）。粘贴计撤销栈一步；剪贴板为空时 `Paste` 置灰不可点；重新加载/重开设计剪贴板清空。
 - 编辑对话框：多行输入，聚焦全选；内容为空时 Save 禁用；保存写回对应字段（空内容不覆盖）。**text 元素额外提供字体选项区**（保存后即时反映在画布展示上）：
   - **字体大小 (px)**：下拉预设（12–64）+ 可直接手输任意整数；
   - **字体**：下拉选择常用字体（Arial/Helvetica/Times New Roman/Georgia/Verdana/Trebuchet MS/Courier New/Garamond/Palatino/Impact/Comic Sans MS/Brush Script MT/Noto Sans CJK SC/SimSun/KaiTi），默认 "Default"；

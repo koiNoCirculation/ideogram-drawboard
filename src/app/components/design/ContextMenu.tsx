@@ -3,42 +3,66 @@ import { styles } from '../../design/designStyles';
 import { CanvasElement } from '../../types';
 
 /**
- * Right-click context menu for an element box: a transparent full-viewport
- * catcher (closes the menu on any other click) plus the fixed-position menu
- * itself (Edit description, Edit text for text elements, Delete).
+ * Right-click context menu: a transparent full-viewport catcher (closes the
+ * menu on any other click) plus the fixed-position menu itself. For an element
+ * box: Copy, Paste, Edit description, Edit text (text elements), Delete.
+ * For a right-click on empty canvas (element === undefined): Paste only.
+ * Paste is greyed out (and inert) while the in-app clipboard is empty.
  */
 export const ContextMenu = ({
     menu,
     element,
+    canPaste,
     onClose,
+    onCopy,
+    onPaste,
     onEditDesc,
     onEditText,
     onDelete,
 }: {
-    menu: { index: number; x: number; y: number };
+    menu: { index: number | null; x: number; y: number };
     element?: CanvasElement;
+    canPaste: boolean;
     onClose: () => void;
+    onCopy: () => void;
+    onPaste: () => void;
     onEditDesc: () => void;
     onEditText: () => void;
     onDelete: () => void;
 }) => {
-    if (!element) return null;
+    const isCanvasMenu = !element;
     return (
         <>
             <View style={styles.menuBackdrop} onPointerDown={onClose} />
             <View style={[styles.contextMenu, { left: menu.x, top: menu.y }]}>
-                <TouchableOpacity style={styles.contextMenuItem} onPress={onEditDesc}>
-                    <Text style={styles.contextMenuItemText}>Edit description</Text>
-                </TouchableOpacity>
-                {element.type === 'text' && (
-                    <TouchableOpacity style={styles.contextMenuItem} onPress={onEditText}>
-                        <Text style={styles.contextMenuItemText}>Edit text</Text>
+                {!isCanvasMenu && (
+                    <TouchableOpacity style={styles.contextMenuItem} onPress={onCopy}>
+                        <Text style={styles.contextMenuItemText}>Copy</Text>
                     </TouchableOpacity>
                 )}
-                <View style={styles.contextMenuDivider} />
-                <TouchableOpacity style={styles.contextMenuItemDanger} onPress={onDelete}>
-                    <Text style={styles.contextMenuItemTextDanger}>Delete</Text>
+                <TouchableOpacity
+                    style={[styles.contextMenuItem, !canPaste && styles.contextMenuItemDisabled]}
+                    onPress={canPaste ? onPaste : undefined}
+                >
+                    <Text style={styles.contextMenuItemText}>Paste</Text>
                 </TouchableOpacity>
+                {!isCanvasMenu && (
+                    <>
+                        <View style={styles.contextMenuDivider} />
+                        <TouchableOpacity style={styles.contextMenuItem} onPress={onEditDesc}>
+                            <Text style={styles.contextMenuItemText}>Edit description</Text>
+                        </TouchableOpacity>
+                        {element.type === 'text' && (
+                            <TouchableOpacity style={styles.contextMenuItem} onPress={onEditText}>
+                                <Text style={styles.contextMenuItemText}>Edit text</Text>
+                            </TouchableOpacity>
+                        )}
+                        <View style={styles.contextMenuDivider} />
+                        <TouchableOpacity style={styles.contextMenuItemDanger} onPress={onDelete}>
+                            <Text style={styles.contextMenuItemTextDanger}>Delete</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
             </View>
         </>
     );
