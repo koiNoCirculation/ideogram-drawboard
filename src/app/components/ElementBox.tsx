@@ -212,6 +212,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         padding: 6,
+        // The box is a UI label, not selectable text. If a drag (resize/move)
+        // sweeps the pointer across the label, the browser would start a
+        // native text selection; the resulting `selectionchange` makes
+        // RN-web's responder system terminate the gesture mid-drag, silently
+        // freezing the resize.
+        userSelect: 'none',
     },
     elementBoxHovered: {
         backgroundColor: '#FFFFFF',
@@ -263,11 +269,13 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#333',
         textAlign: 'center',
+        userSelect: 'none',
     },
     elementDescText: {
         fontSize: 11,
         color: '#666',
         textAlign: 'center',
+        userSelect: 'none',
     },
     elementMoveArea: {
         position: 'absolute',

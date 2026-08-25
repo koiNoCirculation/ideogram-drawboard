@@ -1,104 +1,22 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, ChevronDown, Image as ImageIcon, Redo2, Settings as SettingsIcon, Type, Undo2 } from 'lucide-react-native';
+import { Settings as SettingsIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import {
-    ActivityIndicator,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
-} from 'react-native';
-import { ColorPalette } from './components/ColorPalette';
-import { Corner, ElementBox, MIN_ELEMENT_SIZE } from './components/ElementBox';
-import { SelectField, SettingsDialog } from './components/SettingsDialog';
-import { Design, upsertDesign } from './services/designStore';
-import { normalizePromptForIdeogram } from './services/IdeogramPrompt';
-import { resolveContradictionInBBox } from './services/PromptRefiner';
-import { getImageUrl, getMissingSettings, loadSettings } from './services/settings';
-import { CanvasElement, RefinedPrompt, isEmptyElement } from './types';
-
-/**
- * Parse the LLM's rewritten caption, tolerating stray markdown fences or prose
- * around the JSON object (the prompt asks for bare JSON, but be defensive).
- * Throws if the response is not a usable caption.
- */
-function parseRewrittenCaption(content: string): RefinedPrompt {
-    const trimmed = content.trim();
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start === -1 || end <= start) {
-        throw new Error('The bbox-rewrite model did not return a JSON caption.');
-    }
-    const parsed: any = JSON.parse(trimmed.slice(start, end + 1));
-    if (!Array.isArray(parsed?.compositional_deconstruction?.elements)) {
-        throw new Error('The rewritten caption is missing compositional_deconstruction.elements.');
-    }
-    return parsed as RefinedPrompt;
-}
-
-/** Minimum drag distance in canvas pixels for a create-drag to count (vs a click). */
-const MIN_CREATE_DRAG_PX = 12;
-
-// Wheel zoom of the canvas (elements scale with it; the surrounding UI does not).
-const CANVAS_MIN_ZOOM = 1;
-const CANVAS_MAX_ZOOM = 8;
-const CANVAS_WHEEL_ZOOM_FACTOR = 1.1;
-
-/**
- * Center-alignment guides: while dragging, the nearest other element's center
- * line is shown (and its element highlighted) when its center is within this
- * many 0-1000 units of the dragged element's center.
- */
-const ALIGN_GUIDE_THRESHOLD = 10;
-
-/**
- * Grid cell size in Ideogram bbox units (0-1000 space). The grid gets finer
- * with each pair of wheel steps (×factor per step): 100×100 cells (10 units)
- * at the base level, 200×200 (5) after 2 steps, 500×500 (2) after 4, and
- * 1000×1000 (1) from 6 steps up to max zoom.
- */
-const gridCellUnits = (zoom: number): number => {
-    const f = CANVAS_WHEEL_ZOOM_FACTOR;
-    if (zoom >= f ** 6) return 1;
-    if (zoom >= f ** 4) return 2;
-    if (zoom >= f ** 2) return 5;
-    return 10;
-};
-
-/**
- * Undo/redo history: one snapshot per completed user action (a drag/resize
- * that actually moved, a text/desc edit, an element add/remove, a palette
- * change). Capped at 50 entries.
- */
-type Snapshot = { data: RefinedPrompt | null; palette: string[] };
-const UNDO_HISTORY_LIMIT = 50;
-
-/** Default canvas text size in px — matches ElementBox's elementTextContent style. */
-const DEFAULT_TEXT_FONT_SIZE = 13;
-/** Preset sizes offered by the font-size dropdown (any integer can also be typed). */
-const FONT_SIZE_PRESETS = [12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
-/** Common fonts offered in the font dropdown. */
-const FONT_CHOICES = [
-    'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Trebuchet MS',
-    'Courier New', 'Garamond', 'Palatino', 'Impact', 'Comic Sans MS', 'Brush Script MT',
-    'Noto Sans CJK SC', 'SimSun', 'KaiTi',
-];
-
-/**
- * A small component to display a keyword as a stylized tag.
- */
-const Tag = ({ text }: { text: string }) => {
-    if (!text || text.trim() === "") return null;
-    return (
-        <View style={styles.tag}>
-            <Text style={styles.tagText}>{text.trim()}</Text>
-        </View>
-    );
-};
+import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { CanvasStage } from './components/design/CanvasStage';
+import { ContextMenu } from './components/design/ContextMenu';
+import { EditDialog } from './components/design/EditDialog';
+import { MetadataBar } from './components/design/MetadataBar';
+import { Toolbar } from './components/design/Toolbar';
+import { SettingsDialog } from './components/SettingsDialog';
+import { styles } from './design/designStyles';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, CANVAS_WHEEL_ZOOM_FACTOR, gridCellUnits } from './design/constants';
+import { snapToGridValue } from './design/canvas';
+import { useHistory } from './design/useHistory';
+import { useCanvasInteraction } from './design/useCanvasInteraction';
+import type { ElementTool } from './design/useCanvasInteraction';
+import { useElementEditing } from './design/useElementEditing';
+import { useGeneration } from './design/useGeneration';
+import { RefinedPrompt } from './types';
 
 export default function DesignScreen() {
     const router = useRouter();
@@ -109,9 +27,6 @@ export default function DesignScreen() {
     const [designId] = useState<string>(() =>
         params.id ? (params.id as string) : `design-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     );
-    // Brief "Saved" confirmation shown after a successful save.
-    const [showSaved, setShowSaved] = useState(false);
-    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [title, setTitle] = useState('Untitled Design');
     const [aesthetics, setAesthetics] = useState("");
@@ -127,118 +42,52 @@ export default function DesignScreen() {
     // canvas area scrollable so the enlarged canvas can be panned.
     const [canvasZoom, setCanvasZoom] = useState(CANVAS_MIN_ZOOM);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-    // Base bbox captured when a drag starts; live moves are computed from it so
-    // the element's moving position never feeds back into the gesture delta.
-    const dragBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number] } | null>(null);
-    // Base bbox and corner captured when a resize starts; live moves are
-    // computed from it so the box's growing edges never feed back into the delta.
-    const resizeBaseRef = useRef<{ index: number; baseBbox: [number, number, number, number]; corner: Corner } | null>(null);
     // True once the user has moved or resized a box after the caption loaded —
     // the only thing that can put an element's desc at odds with its bbox, and
     // the only case where the generate flow needs the LLM desc-rewrite.
     const bboxEditedRef = useRef(false);
-    // Undo/redo: past snapshots + redo stack. "Present" is the live
-    // (refinedData, palette); only the completed pre-action snapshots are kept.
-    const [undoState, setUndoState] = useState<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
-    // Pre-action snapshot captured at the start of an undoable operation.
-    const pendingSnapshotRef = useRef<Snapshot | null>(null);
-
-    // Capture the document as it is BEFORE the caller mutates it.
-    const beginHistory = () => {
-        pendingSnapshotRef.current = { data: refinedData, palette };
-    };
-
-    // Promote the captured pre-action snapshot into the undo stack (and drop
-    // the redo stack — a new action invalidates it). Call once per completed
-    // action, only when something actually changed.
-    const commitHistory = () => {
-        const snap = pendingSnapshotRef.current;
-        pendingSnapshotRef.current = null;
-        if (!snap) return;
-        setUndoState((prev) => ({ past: [...prev.past, snap].slice(-UNDO_HISTORY_LIMIT), future: [] }));
-    };
-
-    // For atomic actions (edit, add, delete, palette change): capture and
-    // commit in one go, right before the state update.
-    const recordAction = () => {
-        beginHistory();
-        commitHistory();
-    };
-
-    // A restored document may put descs at odds with bboxes again (e.g. the
-    // user undoes a drag after the rewrite already ran), so re-arm the
-    // generate-time rewrite whenever the document object actually changes.
-    const restoreSnapshot = (snap: Snapshot) => {
-        if (snap.data !== refinedData) bboxEditedRef.current = true;
-        setRefinedData(snap.data);
-        setPalette(snap.palette);
-    };
-
-    const undo = () => {
-        if (undoState.past.length === 0) return;
-        const snap = undoState.past[undoState.past.length - 1];
-        restoreSnapshot(snap);
-        setUndoState({
-            past: undoState.past.slice(0, -1),
-            future: [{ data: refinedData, palette }, ...undoState.future].slice(0, UNDO_HISTORY_LIMIT),
-        });
-    };
-
-    const redo = () => {
-        if (undoState.future.length === 0) return;
-        const snap = undoState.future[0];
-        restoreSnapshot(snap);
-        setUndoState({
-            past: [...undoState.past, { data: refinedData, palette }].slice(-UNDO_HISTORY_LIMIT),
-            future: undoState.future.slice(1),
-        });
-    };
-    // All generated image URLs, in generation order. The canvas background shows
-    // the latest by default; the history strip lets the user view older ones.
-    const [images, setImages] = useState<string[]>([]);
-    // Which generated image is currently shown on the canvas.
-    const [viewIndex, setViewIndex] = useState(0);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generateError, setGenerateError] = useState<string | null>(null);
-    // Right-click context menu on an element box: its index and viewport position.
-    const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
-    // Element field editor dialog: which element and which field (desc | text) is being edited.
-    const [editing, setEditing] = useState<{ index: number; field: 'desc' | 'text' } | null>(null);
-    // The value being edited in the dialog's input.
-    const [draft, setDraft] = useState('');
-    // Font options of the element being edited in the text dialog. `size` is
-    // kept as the raw input text; defaults mirror the plain canvas look.
-    const [fontOpt, setFontOpt] = useState({ size: String(DEFAULT_TEXT_FONT_SIZE), font: '', bold: false, italic: false });
-    // Whether the font-size preset dropdown is open.
-    const [sizeMenuOpen, setSizeMenuOpen] = useState(false);
     // Active toolbar tool: drag on the canvas to create an element of this type.
-    const [activeTool, setActiveTool] = useState<'text' | 'obj' | null>(null);
+    const [activeTool, setActiveTool] = useState<ElementTool | null>(null);
     // "Show elements" checkbox (top-right of the canvas area): when unchecked,
     // the prompt's element boxes are hidden from the canvas.
     const [showElements, setShowElements] = useState(true);
     // "Show grid" checkbox: when unchecked the grid overlay is hidden and
     // grid snapping is disabled.
     const [showGrid, setShowGrid] = useState(true);
-    // Center-alignment guides while dragging: the nearest other element's
-    // vertical/horizontal center line (position in 0-1000 units + that
-    // element's index, which gets highlighted).
-    const [alignGuides, setAlignGuides] = useState<{
-        v: { x: number; index: number } | null;
-        h: { y: number; index: number } | null;
-    }>({ v: null, h: null });
     // Settings dialog (opened from the gear icon in the header).
     const [showSettings, setShowSettings] = useState(false);
-    // Live rectangle (canvas px) of the element currently being created by dragging.
-    const [createDraft, setCreateDraft] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-    // Anchor of the in-flight create-drag: start point in canvas px plus the
-    // canvas origin in viewport px (for converting raw window pointer events).
-    const createBaseRef = useRef<{ xPx: number; yPx: number; rectLeft: number; rectTop: number; type: 'text' | 'obj' } | null>(null);
-    // When a generate attempt was blocked on empty elements, keep their boxes
-    // highlighted (red) until the user fills them in.
-    const [showEmptyHighlight, setShowEmptyHighlight] = useState(false);
-    // Toggle driving the red border's blink; only animates during the flash.
-    const [flashOn, setFlashOn] = useState(false);
-    const flashTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Scale the requested canvas size to fit the available area, preserving aspect ratio,
+    // then apply the wheel zoom (canvas + elements only; the outer UI is unscaled).
+    const scale = canvasSize.width > 0 && canvasSize.height > 0 && canvasAreaSize.width > 0
+        ? Math.min(canvasAreaSize.width / canvasSize.width, canvasAreaSize.height / canvasSize.height)
+        : 0;
+    const displaySize = {
+        width: canvasSize.width * scale * canvasZoom,
+        height: canvasSize.height * scale * canvasZoom,
+    };
+
+    // Snap a 0-1000 coordinate to the grid of the current zoom level.
+    // Snapping only happens while the grid is shown.
+    const snapToGrid = (v: number): number => {
+        if (!showGrid) return Math.round(v);
+        const cell = gridCellUnits(canvasZoom);
+        return snapToGridValue(v, cell);
+    };
+
+    // Snapshot-based undo/redo over the document (refinedData + palette).
+    const history = useHistory(refinedData, palette, setRefinedData, setPalette, bboxEditedRef);
+    // All canvas pointer interaction: drag / resize (with alignment guides) and
+    // dragging out a new element.
+    const interaction = useCanvasInteraction(
+        refinedData, setRefinedData, displaySize, snapToGrid,
+        activeTool, setActiveTool, bboxEditedRef,
+        history.beginHistory, history.commitHistory, history.cancelHistory, history.recordAction,
+    );
+    // Right-click context menu + element field editor + deletion.
+    const editing = useElementEditing(refinedData, setRefinedData, history.recordAction, bboxEditedRef);
+    // Image generation + saving + the generated-image history.
+    const generation = useGeneration(refinedData, setRefinedData, canvasSize, designId, bboxEditedRef);
 
     useEffect(() => {
         try {
@@ -250,8 +99,7 @@ export default function DesignScreen() {
             bboxEditedRef.current = false;
             // A freshly loaded (or re-opened) design starts with clean history
             // and a reset zoom.
-            pendingSnapshotRef.current = null;
-            setUndoState({ past: [], future: [] });
+            history.resetHistory();
             setCanvasZoom(CANVAS_MIN_ZOOM);
 
             // Use the high level description as the initial title
@@ -271,368 +119,16 @@ export default function DesignScreen() {
             const size = (params.size as string).split(",");
             setCanvasSize({ width: Number.parseInt(size[0]), height: Number.parseInt(size[1]) });
 
-            // When re-opening a saved design, restore its generated image history
-            // and show the latest one on the canvas.
+            // When re-opening a saved design, restore its generated image
+            // history and show the latest one on the canvas.
             if (params.images) {
-                const imgs = JSON.parse(params.images as string);
-                if (Array.isArray(imgs) && imgs.length > 0) {
-                    setImages(imgs);
-                    setViewIndex(imgs.length - 1);
-                }
+                generation.restoreImages(JSON.parse(params.images as string));
             }
         } catch (e) {
             console.error('Failed to parse promptData', e);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [params.promptData, params.size, params.images]);
-
-
-    // Scale the requested canvas size to fit the available area, preserving aspect ratio,
-    // then apply the wheel zoom (canvas + elements only; the outer UI is unscaled).
-    const scale = canvasSize.width > 0 && canvasSize.height > 0 && canvasAreaSize.width > 0
-        ? Math.min(canvasAreaSize.width / canvasSize.width, canvasAreaSize.height / canvasSize.height)
-        : 0;
-    const displaySize = {
-        width: canvasSize.width * scale * canvasZoom,
-        height: canvasSize.height * scale * canvasZoom,
-    };
-
-    // Snap a 0-1000 coordinate to the grid of the current zoom level.
-    // Snapping only happens while the grid is shown.
-    const snapToGrid = (v: number): number => {
-        if (!showGrid) return Math.round(v);
-        const cell = gridCellUnits(canvasZoom);
-        return Math.min(1000, Math.max(0, Math.round(v / cell) * cell));
-    };
-
-    // Convert a normalized (0-1000) bbox into pixel geometry on the canvas.
-    // Ideogram format: [y_min, x_min, y_max, x_max], (0, 0) at top-left.
-    const getElementGeometry = (element: CanvasElement) => {
-        const [yMin, xMin, yMax, xMax] = element.bbox!;
-        return {
-            left: (xMin / 1000) * displaySize.width,
-            top: (yMin / 1000) * displaySize.height,
-            width: ((xMax - xMin) / 1000) * displaySize.width,
-            height: ((yMax - yMin) / 1000) * displaySize.height,
-        };
-    };
-
-    // Clamp a normalized (0-1000) bbox so it stays fully inside the canvas,
-    // rounding the result to integer coordinates.
-    const clampBbox = (bbox: [number, number, number, number]): [number, number, number, number] => {
-        const [yMin, xMin, yMax, xMax] = bbox;
-        const x = Math.min(Math.max(xMin, 0), Math.max(1000 - (xMax - xMin), 0));
-        const y = Math.min(Math.max(yMin, 0), Math.max(1000 - (yMax - yMin), 0));
-        return [Math.round(y), Math.round(x), Math.round(y + (yMax - yMin)), Math.round(x + (xMax - xMin))];
-    };
-
-    const handleDragStart = (index: number) => {
-        const element = refinedData?.compositional_deconstruction.elements[index];
-        if (!element?.bbox) return;
-        dragBaseRef.current = { index, baseBbox: element.bbox };
-        beginHistory();
-    };
-
-    // Live-update the dragged element's bbox in the JSON prompt (normalized 0-1000).
-    const handleDragMove = (dxPx: number, dyPx: number) => {
-        const drag = dragBaseRef.current;
-        if (!drag || displaySize.width <= 0 || displaySize.height <= 0) return;
-        const dx = (dxPx / displaySize.width) * 1000;
-        const dy = (dyPx / displaySize.height) * 1000;
-        const [yMin, xMin, yMax, xMax] = drag.baseBbox;
-        // Snap the moved origin to the current grid; the box size is kept.
-        const nyMin = snapToGrid(yMin + dy);
-        const nxMin = snapToGrid(xMin + dx);
-        const clamped = clampBbox([nyMin, nxMin, nyMin + (yMax - yMin), nxMin + (xMax - xMin)]);
-        // Only a real change (post-clamp) counts as an edit — drags that
-        // no-op against the canvas edge keep the descs valid.
-        if (clamped.some((v, i) => v !== drag.baseBbox[i])) bboxEditedRef.current = true;
-        const { index } = drag;
-        // Alignment guides: the nearest other element whose vertical
-        // (x-center) / horizontal (y-center) center line is close to the
-        // dragged element's center line.
-        const myCx = (clamped[1] + clamped[3]) / 2;
-        const myCy = (clamped[0] + clamped[2]) / 2;
-        let bestV: { x: number; index: number } | null = null;
-        let bestH: { y: number; index: number } | null = null;
-        let bestVD = ALIGN_GUIDE_THRESHOLD + 1;
-        let bestHD = ALIGN_GUIDE_THRESHOLD + 1;
-        refinedData?.compositional_deconstruction.elements.forEach((el, i) => {
-            if (i === index || !el.bbox) return;
-            const dV = Math.abs((el.bbox[1] + el.bbox[3]) / 2 - myCx);
-            if (dV <= bestVD) { bestVD = dV; bestV = { x: (el.bbox[1] + el.bbox[3]) / 2, index: i }; }
-            const dH = Math.abs((el.bbox[0] + el.bbox[2]) / 2 - myCy);
-            if (dH <= bestHD) { bestHD = dH; bestH = { y: (el.bbox[0] + el.bbox[2]) / 2, index: i }; }
-        });
-        setAlignGuides({ v: bestV, h: bestH });
-        setRefinedData((prev) => {
-            if (!prev) return prev;
-            const elements = prev.compositional_deconstruction.elements.map((el, i) =>
-                i === index ? { ...el, bbox: clamped } : el
-            );
-            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
-        });
-    };
-
-    const handleDragEnd = () => {
-        const drag = dragBaseRef.current;
-        // One undo step per drag — and only when the box really moved
-        // (a no-op drag against the canvas edge is not an edit).
-        const el = drag ? refinedData?.compositional_deconstruction.elements[drag.index] : undefined;
-        if (drag && el?.bbox && !el.bbox.every((v, i) => v === drag.baseBbox[i])) {
-            commitHistory();
-        } else {
-            pendingSnapshotRef.current = null;
-        }
-        dragBaseRef.current = null;
-        setAlignGuides({ v: null, h: null });
-    };
-
-    const handleResizeStart = (index: number, corner: Corner) => {
-        const element = refinedData?.compositional_deconstruction.elements[index];
-        if (!element?.bbox) return;
-        resizeBaseRef.current = { index, baseBbox: element.bbox, corner };
-        beginHistory();
-    };
-
-    // Live-update the resized element's bbox: extend/shift the edges controlled
-    // by the grabbed corner, clamped to the canvas and a minimum element size.
-    const handleResizeMove = (dxPx: number, dyPx: number) => {
-        const resize = resizeBaseRef.current;
-        if (!resize || displaySize.width <= 0 || displaySize.height <= 0) return;
-        const dx = (dxPx / displaySize.width) * 1000;
-        const dy = (dyPx / displaySize.height) * 1000;
-        const [yMin, xMin, yMax, xMax] = resize.baseBbox;
-        const { corner } = resize;
-        const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
-        // Snap the grabbed edge to the current grid (the opposite edge stays).
-        let nxMin = xMin, nxMax = xMax, nyMin = yMin, nyMax = yMax;
-        if (corner === 'nw' || corner === 'sw') nxMin = snapToGrid(clamp(xMin + dx, 0, xMax - MIN_ELEMENT_SIZE));
-        if (corner === 'ne' || corner === 'se') nxMax = snapToGrid(clamp(xMax + dx, xMin + MIN_ELEMENT_SIZE, 1000));
-        if (corner === 'nw' || corner === 'ne') nyMin = snapToGrid(clamp(yMin + dy, 0, yMax - MIN_ELEMENT_SIZE));
-        if (corner === 'sw' || corner === 'se') nyMax = snapToGrid(clamp(yMax + dy, yMin + MIN_ELEMENT_SIZE, 1000));
-        // Snapping may have crossed the opposite edge — re-clamp (constraints win).
-        nxMin = clamp(nxMin, 0, xMax - MIN_ELEMENT_SIZE);
-        nxMax = clamp(nxMax, xMin + MIN_ELEMENT_SIZE, 1000);
-        nyMin = clamp(nyMin, 0, yMax - MIN_ELEMENT_SIZE);
-        nyMax = clamp(nyMax, yMin + MIN_ELEMENT_SIZE, 1000);
-        const newBbox: [number, number, number, number] = [
-            Math.round(nyMin), Math.round(nxMin), Math.round(nyMax), Math.round(nxMax),
-        ];
-        // Same as the drag path: mark edited only when the clamped bbox
-        // actually changed.
-        if (newBbox.some((v, i) => v !== resize.baseBbox[i])) bboxEditedRef.current = true;
-        const { index } = resize;
-        setRefinedData((prev) => {
-            if (!prev) return prev;
-            const elements = prev.compositional_deconstruction.elements.map((el, i) =>
-                i === index ? { ...el, bbox: newBbox } : el
-            );
-            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
-        });
-    };
-
-    const handleResizeEnd = () => {
-        const resize = resizeBaseRef.current;
-        // Same one-step-per-gesture rule as the drag path.
-        const el = resize ? refinedData?.compositional_deconstruction.elements[resize.index] : undefined;
-        if (resize && el?.bbox && !el.bbox.every((v, i) => v === resize.baseBbox[i])) {
-            commitHistory();
-        } else {
-            pendingSnapshotRef.current = null;
-        }
-        resizeBaseRef.current = null;
-    };
-
-    // Right-click an element box: open the context menu at the cursor,
-    // clamped so the menu stays inside the viewport.
-    const openContextMenu = (index: number, e: any) => {
-        // Suppress the browser's native context menu.
-        e?.preventDefault?.();
-        e?.nativeEvent?.preventDefault?.();
-        const point = e?.nativeEvent ?? e ?? {};
-        const element = refinedData?.compositional_deconstruction.elements[index];
-        const itemH = 36;
-        const menuW = 180;
-        // Edit description (+ Edit text for text elements) plus Delete.
-        const itemCount = (element?.type === 'text' ? 2 : 1) + 1;
-        const menuH = 12 + itemH * itemCount + 10;
-        const vw = window.innerWidth || 1280;
-        const vh = window.innerHeight || 800;
-        setContextMenu({
-            index,
-            x: Math.min(Math.max(point.clientX ?? 0, 8), vw - menuW - 8),
-            y: Math.min(Math.max(point.clientY ?? 0, 8), vh - menuH - 8),
-        });
-    };
-
-    // Open the edit dialog for the field of the context-menu target element.
-    const openEditor = (field: 'desc' | 'text') => {
-        if (!contextMenu) return;
-        const { index } = contextMenu;
-        const element = refinedData?.compositional_deconstruction.elements[index];
-        setContextMenu(null);
-        if (!element) return;
-        setDraft(field === 'desc' ? (element.desc ?? '') : (element.text ?? ''));
-        // Seed the font options from the element's existing extra_fontoption
-        // (defaults = the plain canvas look) and close the size preset list.
-        const fo = element.extra_fontoption;
-        setFontOpt({
-            size: String(fo?.size ?? DEFAULT_TEXT_FONT_SIZE),
-            font: fo?.font ?? '',
-            bold: fo?.bold ?? false,
-            italic: fo?.italic ?? false,
-        });
-        setSizeMenuOpen(false);
-        setEditing({ index, field });
-    };
-
-    // Save the dialog's draft back into the element and close the dialog.
-    const saveEdit = () => {
-        if (!editing) return;
-        const value = draft.trim();
-        if (!value) return;
-        const { index, field } = editing;
-        recordAction();
-        // A font-option change alters the text element's rendering, so the
-        // caption needs an LLM rewrite at generate time: re-arm the rewrite
-        // whenever the stored extra_fontoption actually changes.
-        if (field === 'text') {
-            const element = refinedData?.compositional_deconstruction.elements[index];
-            const typed = parseInt(fontOpt.size, 10);
-            const sizeNum = Number.isFinite(typed) && typed > 0 ? typed : DEFAULT_TEXT_FONT_SIZE;
-            const fo: NonNullable<CanvasElement['extra_fontoption']> = {};
-            if (sizeNum !== DEFAULT_TEXT_FONT_SIZE) fo.size = sizeNum;
-            if (fontOpt.font !== '') fo.font = fontOpt.font;
-            if (fontOpt.bold) fo.bold = true;
-            if (fontOpt.italic) fo.italic = true;
-            const next = Object.keys(fo).length ? fo : undefined;
-            const changed = (['size', 'font', 'bold', 'italic'] as const)
-                .some((k) => (element?.extra_fontoption?.[k] ?? null) !== (next?.[k] ?? null));
-            if (changed) bboxEditedRef.current = true;
-        }
-        setRefinedData((prev) => {
-            if (!prev) return prev;
-            const elements = prev.compositional_deconstruction.elements.map((el, i) => {
-                if (i !== index) return el;
-                if (field === 'desc') return { ...el, desc: value };
-                // Text: apply the font options. Only NON-DEFAULT values are
-                // stored — the prompt's own desc carries the default font
-                // description, so a stored default would fight it. No
-                // explicit change -> the field is (re)removed entirely.
-                const typed = parseInt(fontOpt.size, 10);
-                const sizeNum = Number.isFinite(typed) && typed > 0 ? typed : DEFAULT_TEXT_FONT_SIZE;
-                const fo: NonNullable<CanvasElement['extra_fontoption']> = {};
-                if (sizeNum !== DEFAULT_TEXT_FONT_SIZE) fo.size = sizeNum;
-                if (fontOpt.font !== '') fo.font = fontOpt.font;
-                if (fontOpt.bold) fo.bold = true;
-                if (fontOpt.italic) fo.italic = true;
-                const isDefault = Object.keys(fo).length === 0;
-                if (isDefault) {
-                    const rest = { ...el };
-                    delete rest.extra_fontoption;
-                    return { ...rest, text: value };
-                }
-                return { ...el, text: value, extra_fontoption: fo };
-            });
-            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
-        });
-        setEditing(null);
-    };
-
-    // Remove the context-menu target element from the caption and close the menu.
-    const deleteElement = () => {
-        if (!contextMenu) return;
-        const { index } = contextMenu;
-        setContextMenu(null);
-        recordAction();
-        setRefinedData((prev) => {
-            if (!prev) return prev;
-            const elements = prev.compositional_deconstruction.elements.filter((_, i) => i !== index);
-            return { ...prev, compositional_deconstruction: { ...prev.compositional_deconstruction, elements } };
-        });
-    };
-
-    // Append a new (empty) element of the given type with the given bbox.
-    // It shows up on the canvas and can be filled in via the right-click menu.
-    const addElement = (type: 'text' | 'obj', bbox: [number, number, number, number]) => {
-        recordAction();
-        setRefinedData((prev) => {
-            if (!prev) return prev;
-            const element: CanvasElement = type === 'text'
-                ? { type, bbox, text: '', desc: '' }
-                : { type, bbox, desc: '' };
-            return {
-                ...prev,
-                compositional_deconstruction: {
-                    ...prev.compositional_deconstruction,
-                    elements: [...prev.compositional_deconstruction.elements, element],
-                },
-            };
-        });
-    };
-
-    // Start a create-drag on the canvas while a creation tool is active
-    // (left button only; element boxes are pointer-transparent in tool mode).
-    const handleCanvasPointerDown = (e: any) => {
-        if (!activeTool || e.button !== 0 || displaySize.width <= 0 || displaySize.height <= 0) return;
-        const rect = e.currentTarget?.getBoundingClientRect?.();
-        if (!rect) return;
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        createBaseRef.current = { xPx: x, yPx: y, rectLeft: rect.left, rectTop: rect.top, type: activeTool };
-        setCreateDraft({ left: x, top: y, width: 0, height: 0 });
-    };
-
-    // While a create-drag is in flight, track the pointer on window so the
-    // rectangle follows even when the pointer leaves the canvas.
-    const isCreating = createDraft !== null;
-    useEffect(() => {
-        if (!isCreating) return;
-        const base = createBaseRef.current;
-        if (!base) return;
-        const onMove = (ev: PointerEvent) => {
-            const x = ev.clientX - base.rectLeft;
-            const y = ev.clientY - base.rectTop;
-            setCreateDraft({
-                left: Math.min(base.xPx, x),
-                top: Math.min(base.yPx, y),
-                width: Math.abs(x - base.xPx),
-                height: Math.abs(y - base.yPx),
-            });
-        };
-        const onUp = (ev: PointerEvent) => {
-            const x = ev.clientX - base.rectLeft;
-            const y = ev.clientY - base.rectTop;
-            const wPx = Math.abs(x - base.xPx);
-            const hPx = Math.abs(y - base.yPx);
-            createBaseRef.current = null;
-            setCreateDraft(null);
-            // A plain click (no real drag) creates nothing.
-            if (wPx < MIN_CREATE_DRAG_PX || hPx < MIN_CREATE_DRAG_PX) return;
-            // Convert to a normalized (0-1000) bbox, snap the origin to the
-            // current grid, clamp to the canvas, enforce the minimum size.
-            const xMin = Math.min(1000 - MIN_ELEMENT_SIZE, snapToGrid(Math.round((Math.min(base.xPx, x) / displaySize.width) * 1000)));
-            const yMin = Math.min(1000 - MIN_ELEMENT_SIZE, snapToGrid(Math.round((Math.min(base.yPx, y) / displaySize.height) * 1000)));
-            let xMax = Math.min(1000, Math.round(((Math.min(base.xPx, x) + wPx) / displaySize.width) * 1000));
-            let yMax = Math.min(1000, Math.round(((Math.min(base.yPx, y) + hPx) / displaySize.height) * 1000));
-            if (xMax - xMin < MIN_ELEMENT_SIZE) xMax = Math.min(1000, xMin + MIN_ELEMENT_SIZE);
-            if (yMax - yMin < MIN_ELEMENT_SIZE) yMax = Math.min(1000, yMin + MIN_ELEMENT_SIZE);
-            addElement(base.type, [yMin, xMin, yMax, xMax]);
-            setActiveTool(null);
-        };
-        const onCancel = () => {
-            createBaseRef.current = null;
-            setCreateDraft(null);
-        };
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-        window.addEventListener('pointercancel', onCancel);
-        return () => {
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
-            window.removeEventListener('pointercancel', onCancel);
-        };
-    }, [isCreating, displaySize.width, displaySize.height, showGrid]);
 
     // Mouse wheel over the canvas area zooms the canvas (web). A native
     // non-passive listener so preventDefault stops the container scrolling at
@@ -672,226 +168,44 @@ export default function DesignScreen() {
         const onKey = (ev: KeyboardEvent) => {
             if (ev.key === 'Escape') {
                 setActiveTool(null);
-                createBaseRef.current = null;
-                setCreateDraft(null);
+                interaction.cancelCreation();
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTool]);
 
-    // Blink the empty-element highlight for a few cycles, then settle on a
-    // steady red border (showEmptyHighlight stays true until they're fixed).
-    const startFlash = () => {
-        if (flashTimerRef.current) clearInterval(flashTimerRef.current);
-        let ticks = 0;
-        const totalTicks = 6; // 3 full on/off cycles
-        setFlashOn(true);
-        flashTimerRef.current = setInterval(() => {
-            ticks += 1;
-            if (ticks >= totalTicks) {
-                if (flashTimerRef.current) clearInterval(flashTimerRef.current);
-                flashTimerRef.current = null;
-                setFlashOn(true); // settle on the bright red border
-            } else {
-                setFlashOn((v) => !v);
-            }
-        }, 320);
-    };
-
-    // Clean up timers if the screen unmounts mid-blink / mid-save-flash.
-    useEffect(() => () => {
-        if (flashTimerRef.current) clearInterval(flashTimerRef.current);
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-    }, []);
-
-    // Load the bbox-rewrite system prompt from the public assets directory.
-    async function loadRewriteSystemPrompt(): Promise<string> {
-        try {
-            const response = await fetch('/system_prompt_rewrite_adapt_bbox.txt');
-            if (!response.ok) {
-                throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
-            }
-            return await response.text();
-        } catch (error) {
-            console.error('[loadRewriteSystemPrompt Error]:', error);
-            throw new Error('Could not load the bbox-rewrite system prompt. Please ensure assets are correctly bundled.');
-        }
-    }
-
-    // Rewrite element descs (to match the user-modified bboxes), then call the
-    // local Ideogram-compatible service to generate the image.
-    const handleGenerate = async () => {
-        if (!refinedData || isGenerating) return;
-        // The LLM (rewrite) and image endpoints come from Settings: refuse to
-        // generate with a message naming whatever is still missing.
-        const settings = loadSettings();
-        const missing = getMissingSettings(settings);
-        if (missing.length > 0) {
-            setGenerateError(`Cannot generate — missing settings: ${missing.join(', ')}. Open Settings (gear icon) to configure them.`);
-            return;
-        }
-        // No empty elements: a text element needs its text, an obj element its
-        // description. They can be filled in via the right-click menu.
-        const elements = refinedData.compositional_deconstruction.elements;
-        const emptyIndex = elements.findIndex(isEmptyElement);
-        if (emptyIndex !== -1) {
-            const empty = elements[emptyIndex];
-            const field = empty?.type === 'text' ? 'text' : 'description';
-            setGenerateError(`Element ${emptyIndex + 1} is empty — right-click it on the canvas to edit its ${field}.`);
-            // Point the user at the offending box(es) on the canvas.
-            setShowEmptyHighlight(true);
-            startFlash();
-            return;
-        }
-        setIsGenerating(true);
-        setGenerateError(null);
-        try {
-            // Only when the user actually moved or resized a box can descs be
-            // at odds with bboxes — unedited designs skip the extra LLM call.
-            let dataToGenerate = refinedData;
-            if (bboxEditedRef.current) {
-                // Resolve the contradiction between each element's desc and its
-                // bbox (which the user moved or resized on the canvas).
-                const systemPrompt = await loadRewriteSystemPrompt();
-                const rewritten = parseRewrittenCaption(
-                    await resolveContradictionInBBox(systemPrompt, JSON.stringify(refinedData)),
-                );
-
-                // The model is instructed to keep every field except desc, but
-                // the bboxes on the canvas are the source of truth, so merge
-                // only the rewritten descs back into the local caption and
-                // send that.
-                const elements = refinedData.compositional_deconstruction.elements.map((element, i) => {
-                    const fix = rewritten.compositional_deconstruction.elements[i];
-                    if (!fix || fix.type !== element.type || typeof fix.desc !== 'string' || !fix.desc) return element;
-                    return { ...element, desc: fix.desc };
-                });
-                const resolvedData: RefinedPrompt = {
-                    ...refinedData,
-                    compositional_deconstruction: {
-                        ...refinedData.compositional_deconstruction,
-                        elements,
-                    },
-                };
-                dataToGenerate = resolvedData;
-                setRefinedData(resolvedData);
-                // The descs now match the current bboxes; don't rewrite again
-                // until the next box edit.
-                bboxEditedRef.current = false;
-            }
-            console.log(dataToGenerate)
-            const formData = new FormData();
-            // The service expects json_prompt as a plain string field, not a file
-            // upload. Normalize first so style_description carries exactly one
-            // of photo/art_style, in the key order Ideogram 4.0 expects.
-            formData.append('json_prompt', JSON.stringify(normalizePromptForIdeogram(dataToGenerate)));
-            formData.append('response_type', 'url');
-            formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
-
-            const imageKey = settings.imageSecretKey.trim();
-            const headers: Record<string, string> = {};
-            if (imageKey) headers['Api-Key'] = imageKey;
-
-            const response = await fetch(getImageUrl(settings), {
-                method: 'POST',
-                headers,
-                body: formData,
-            });
-            if (!response.ok) {
-                throw new Error(`Request failed with status ${response.status}`);
-            }
-            const result = await response.json();
-            const url: string | undefined = result?.data?.[0]?.url;
-            if (!url) {
-                throw new Error('No image URL in response');
-            }
-            // Append to the history and switch the canvas to the new latest image.
-            setImages((prev) => [...prev, url]);
-            setViewIndex(images.length);
-        } catch (error: any) {
-            setGenerateError(error?.message ?? 'Generation failed');
-        } finally {
-            setIsGenerating(false);
-        }
+    // Toggle a creation tool (a second press deactivates it) and clear any
+    // in-progress hover highlight.
+    const toggleTool = (tool: ElementTool) => {
+        setActiveTool(activeTool === tool ? null : tool);
+        setHoveredIndex(null);
     };
 
     // Palette edits update the display state and write back into the prompt,
     // so the swatches the user composes are what gets generated/saved.
     const handlePaletteChange = (colors: string[]) => {
-        recordAction();
+        history.recordAction();
         setPalette(colors);
         setRefinedData((prev) => prev
             ? { ...prev, style_description: { ...(prev.style_description ?? {}), color_palette: colors } }
             : prev);
     };
 
-    // Persist the current prompt + generated images as a design (the design-file
-    // framework: { prompt, images }).
-    const handleSave = () => {
-        if (!refinedData) return;
-        const design: Design = {
-            id: designId,
-            prompt: normalizePromptForIdeogram(refinedData),
-            images,
-            size: { width: canvasSize.width, height: canvasSize.height },
-            updatedAt: Date.now(),
-        };
-        upsertDesign(design);
-        setShowSaved(true);
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-        savedTimerRef.current = setTimeout(() => setShowSaved(false), 1800);
-    };
-
-    // The image shown on the canvas: the one the user selected in the history
-    // strip, defaulting to the most recently generated.
-    const shownIndex = images.length === 0 ? -1 : Math.min(viewIndex, images.length - 1);
-    const shownImage = shownIndex >= 0 ? images[shownIndex] : null;
+    const elements = refinedData?.compositional_deconstruction?.elements ?? [];
 
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.mainContent}>
-                {/* Left Sidebar: Toolbar */}
-                <View style={styles.toolbar}>
-                    <TouchableOpacity
-                        style={[styles.toolButton, activeTool === 'text' && styles.toolButtonActive]}
-                        testID="tool-text"
-                        onPress={() => {
-                            setActiveTool(activeTool === 'text' ? null : 'text');
-                            setHoveredIndex(null);
-                        }}
-                    >
-                        <Type color={activeTool === 'text' ? '#FFFFFF' : '#007AFF'} size={28} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.toolButton, activeTool === 'obj' && styles.toolButtonActive]}
-                        testID="tool-obj"
-                        onPress={() => {
-                            setActiveTool(activeTool === 'obj' ? null : 'obj');
-                            setHoveredIndex(null);
-                        }}
-                    >
-                        <ImageIcon color={activeTool === 'obj' ? '#FFFFFF' : '#007AFF'} size={28} />
-                    </TouchableOpacity>
-
-                    {/* Undo / redo (greyed out when their stack is empty) */}
-                    <TouchableOpacity
-                        style={[styles.toolButton, styles.toolButtonGap]}
-                        onPress={undo}
-                        disabled={undoState.past.length === 0}
-                        testID="undo-button"
-                    >
-                        <Undo2 color={undoState.past.length > 0 ? '#007AFF' : '#CCCCCC'} size={28} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.toolButton, styles.toolButtonGap]}
-                        onPress={redo}
-                        disabled={undoState.future.length === 0}
-                        testID="redo-button"
-                    >
-                        <Redo2 color={undoState.future.length > 0 ? '#007AFF' : '#CCCCCC'} size={28} />
-                    </TouchableOpacity>
-                </View>
+                <Toolbar
+                    activeTool={activeTool}
+                    onToolToggle={toggleTool}
+                    canUndo={history.undoState.past.length > 0}
+                    canRedo={history.undoState.future.length > 0}
+                    onUndo={history.undo}
+                    onRedo={history.redo}
+                />
 
                 {/* Right Content: Title, Metadata & Canvas */}
                 <View style={styles.canvasArea}>
@@ -912,49 +226,15 @@ export default function DesignScreen() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Metadata Bar: six sections in one row, each capped at
-                        20% of the row width; tags/swatches wrap inside a
-                        section instead of scrolling it off-screen. */}
-                    <View style={styles.metadataContainer}>
-                        <View style={styles.metadataGroup}>
-                            <Text style={styles.groupLabel}>Aesthetics</Text>
-                            <View style={styles.tagRow}>
-                                {aesthetics.split(',').map((val, i) => <Tag key={`aes-${i}`} text={val} />)}
-                            </View>
-                        </View>
-                        <View style={styles.metadataGroup}>
-                            <Text style={styles.groupLabel}>Lighting</Text>
-                            <View style={styles.tagRow}>
-                                {lighting.split(',').map((val, i) => <Tag key={`light-${i}`} text={val} />)}
-                            </View>
-                        </View>
-                        {artStyle !== "" && (
-                            <View style={styles.metadataGroup}>
-                                <Text style={styles.groupLabel}>Art Style</Text>
-                                <View style={styles.tagRow}>
-                                    {artStyle.split(' ').map((val, i) => <Tag key={`style-${i}`} text={val} />)}
-                                </View>
-                            </View>
-                        )}
-                        {photo !== "" && (
-                            <View style={styles.metadataGroup}>
-                                <Text style={styles.groupLabel}>Photo</Text>
-                                <View style={styles.tagRow}>
-                                    {photo.split(',').map((val, i) => <Tag key={`photo-${i}`} text={val} />)}
-                                </View>
-                            </View>
-                        )}
-                        <View style={styles.metadataGroup}>
-                            <Text style={styles.groupLabel}>Medium</Text>
-                            <View style={styles.tagRow}>
-                                <Tag text={medium} />
-                            </View>
-                        </View>
-                        <View style={styles.metadataGroup}>
-                            <Text style={styles.groupLabel}>Palette</Text>
-                            <ColorPalette palette={palette} onPaletteChange={handlePaletteChange} />
-                        </View>
-                    </View>
+                    <MetadataBar
+                        aesthetics={aesthetics}
+                        lighting={lighting}
+                        medium={medium}
+                        photo={photo}
+                        artStyle={artStyle}
+                        palette={palette}
+                        onPaletteChange={handlePaletteChange}
+                    />
 
                     {/* Background Info */}
                     {refinedData?.compositional_deconstruction?.background && (
@@ -964,911 +244,78 @@ export default function DesignScreen() {
                         </View>
                     )}
 
-                    {/* Canvas Placeholder */}
-                    <View style={styles.canvasContainer}>
-                        {/* "Show grid" / "Show elements" toggles, pinned to the
-                            canvas area's top-right corner. */}
-                        <View style={styles.canvasToggles}>
-                            <TouchableOpacity
-                                testID="show-grid-toggle"
-                                style={[styles.showElementsToggle, { marginRight: 16 }]}
-                                onPress={() => setShowGrid((v) => !v)}
-                            >
-                                <View style={[styles.checkbox, showGrid && styles.checkboxChecked]}>
-                                    {showGrid && <Check size={11} color="#FFFFFF" />}
-                                </View>
-                                <Text style={styles.checkboxLabel}>Show grid</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                testID="show-elements-toggle"
-                                style={styles.showElementsToggle}
-                                onPress={() => setShowElements((v) => !v)}
-                            >
-                                <View style={[styles.checkbox, showElements && styles.checkboxChecked]}>
-                                    {showElements && <Check size={11} color="#FFFFFF" />}
-                                </View>
-                                <Text style={styles.checkboxLabel}>Show elements</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <View
-                            testID="canvas-sizer"
-                            style={[
-                                styles.canvasSizer,
-                                // Zoomed: the canvas overflows the area, so make
-                                // it scrollable (and top-left aligned — centering
-                                // an overflowing flex child clips its top/left).
-                                canvasZoom > 1 && {
-                                    overflow: 'scroll',
-                                    alignItems: 'flex-start',
-                                    justifyContent: 'flex-start',
-                                },
-                            ]}
-                            onLayout={(e) => {
-                                setCanvasAreaSize({
-                                    width: e.nativeEvent.layout.width,
-                                    height: e.nativeEvent.layout.height,
-                                })
-                            }}
-                        >
-                            <View
-                                style={[
-                                    styles.canvas,
-                                    // Auto margins center the canvas on any axis
-                                    // that still fits while zoomed (and collapse
-                                    // to 0 on overflowing axes, keeping the
-                                    // whole canvas scrollable).
-                                    { width: displaySize.width, height: displaySize.height, margin: 'auto' },
-                                    // Web: crosshair while a creation tool is armed.
-                                    (activeTool ? { cursor: 'crosshair' } : {}) as any,
-                                ]}
-                                onPointerDown={handleCanvasPointerDown}
-                            >
-                                {/* Generated image: rendered first so the element boxes overlay it.
-                                    Shows the latest image by default (see shownImage). */}
-                                {shownImage && (
-                                    <Image
-                                        source={{ uri: shownImage }}
-                                        style={[
-                                            styles.generatedImage,
-                                            { width: displaySize.width, height: displaySize.height },
-                                        ]}
-                                        resizeMode="cover"
-                                    />
-                                )}
-
-                                {/* Grid overlay: follows the zoom level (10×10 ->
-                                    50×50 -> 250×250 -> 1000×1000 cells in the 0-1000
-                                    bbox space); pixel cell size is derived per axis,
-                                    so the cell aspect follows the canvas aspect. */}
-                                {displaySize.width > 0 && showGrid && (
-                                    <View
-                                        pointerEvents="none"
-                                        style={{
-                                            position: 'absolute',
-                                            top: 0,
-                                            left: 0,
-                                            right: 0,
-                                            bottom: 0,
-                                            // High-contrast lines (near-black at 45%) so the
-                                            // grid stays visible on white and on photos alike.
-                                            backgroundImage: `repeating-linear-gradient(to right, rgba(0, 0, 0, 0.45) 0, rgba(0, 0, 0, 0.45) 1px, transparent 1px, transparent ${(gridCellUnits(canvasZoom) / 1000) * displaySize.width}px), repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.45) 0, rgba(0, 0, 0, 0.45) 1px, transparent 1px, transparent ${(gridCellUnits(canvasZoom) / 1000) * displaySize.height}px)`,
-                                        } as any}
-                                    />
-                                )}
-
-                                {refinedData && refinedData.compositional_deconstruction.elements.length > 0 ? (
-                                    <>
-                                        {/* Element layer (hidden while "Show elements" is off):
-                                            pointer-transparent while a creation tool is active
-                                            so drags start new elements. */}
-                                        <View
-                                            style={[styles.elementLayer, !showElements && { display: 'none' }]}
-                                            pointerEvents={activeTool ? 'none' : undefined}
-                                        >
-                                        {refinedData.compositional_deconstruction.elements.map((element, index) => {
-                                            if (!element.bbox) return null;
-                                            const geo = getElementGeometry(element);
-                                            return (
-                                                <ElementBox
-                                                    key={`el-${index}`}
-                                                    element={element}
-                                                    {...geo}
-                                                    hovered={hoveredIndex === index}
-                                                    onHoverIn={() => setHoveredIndex(index)}
-                                                    onHoverOut={() => setHoveredIndex(null)}
-                                                    onDragStart={() => handleDragStart(index)}
-                                                    onDragMove={handleDragMove}
-                                                    onDragEnd={handleDragEnd}
-                                                    onResizeStart={(corner) => handleResizeStart(index, corner)}
-                                                    onResizeMove={handleResizeMove}
-                                                    onResizeEnd={handleResizeEnd}
-                                                    onContextMenu={(e) => openContextMenu(index, e)}
-                                                    empty={showEmptyHighlight && isEmptyElement(element)}
-                                                    flashOn={flashOn}
-                                                    highlighted={
-                                                        alignGuides.v?.index === index ||
-                                                        alignGuides.h?.index === index
-                                                    }
-                                                />
-                                            );
-                                        })}
-                                        </View>
-
-                                        {/* Center-alignment guides while dragging:
-                                            the nearest other element's center lines. */}
-                                        {alignGuides.v && (
-                                            <View
-                                                pointerEvents="none"
-                                                style={{
-                                                    position: 'absolute',
-                                                    left: (alignGuides.v.x / 1000) * displaySize.width,
-                                                    top: 0,
-                                                    width: 1,
-                                                    height: displaySize.height,
-                                                    backgroundColor: 'rgba(255, 59, 48, 0.9)',
-                                                }}
-                                            />
-                                        )}
-                                        {alignGuides.h && (
-                                            <View
-                                                pointerEvents="none"
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: (alignGuides.h.y / 1000) * displaySize.height,
-                                                    left: 0,
-                                                    height: 1,
-                                                    width: displaySize.width,
-                                                    backgroundColor: 'rgba(255, 59, 48, 0.9)',
-                                                }}
-                                            />
-                                        )}
-
-                                        {/* Floating tooltip for the hovered text element */}
-                                        {(() => {
-                                            if (hoveredIndex === null || !showElements) return null;
-                                            const element = refinedData.compositional_deconstruction.elements[hoveredIndex];
-                                            if (!element || element.type !== 'text' || !element.bbox) return null;
-                                            const geo = getElementGeometry(element);
-                                            const width = 260;
-                                            const left = Math.min(
-                                                Math.max(geo.left + geo.width / 2 - width / 2, 8),
-                                                Math.max(displaySize.width - width - 8, 8),
-                                            );
-                                            // Prefer showing above the box; flip below if there's no room.
-                                            const showAbove = geo.top > 90;
-                                            const position = showAbove
-                                                ? { bottom: displaySize.height - geo.top + 10 }
-                                                : { top: geo.top + geo.height + 10 };
-                                            return (
-                                                <View pointerEvents="none" style={[styles.tooltip, { left, width }, position]}>
-                                                    <Text style={styles.tooltipText}>{element.desc}</Text>
-                                                    <View
-                                                        style={[
-                                                            styles.tooltipArrow,
-                                                            { left: geo.left + geo.width / 2 - left - 5 },
-                                                            showAbove ? { bottom: -5 } : { top: -5 },
-                                                        ]}
-                                                    />
-                                                </View>
-                                            );
-                                        })()}
-                                    </>
-                                ) : (
-                                    <Text style={styles.canvasPlaceholderText}>Canvas Area</Text>
-                                )}
-
-                                {/* Live rectangle of the element being created by dragging */}
-                                {createDraft && (
-                                    <View
-                                        pointerEvents="none"
-                                        style={[
-                                            styles.createDraft,
-                                            {
-                                                left: createDraft.left,
-                                                top: createDraft.top,
-                                                width: createDraft.width,
-                                                height: createDraft.height,
-                                                borderColor: activeTool === 'text' ? '#FF9500' : '#007AFF',
-                                            },
-                                        ]}
-                                    />
-                                )}
-                            </View>
-                        </View>
-
-                        {/* Creation tool hint */}
-                        {activeTool && (
-                            <Text style={styles.toolHint}>
-                                Drag on the canvas to create a {activeTool === 'text' ? 'text' : 'object'} element · Esc to cancel
-                            </Text>
-                        )}
-
-                        {/* History of generated images: click a thumbnail to view it
-                            on the canvas (the latest is shown by default). */}
-                        {images.length > 0 && (
-                            <View style={styles.historyStrip}>
-                                <Text style={styles.historyLabel}>Generated ({images.length})</Text>
-                                <ScrollView
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={styles.historyRow}
-                                >
-                                    {images.map((url, i) => (
-                                        <TouchableOpacity
-                                            key={`hist-${i}`}
-                                            onPress={() => setViewIndex(i)}
-                                            activeOpacity={0.8}
-                                        >
-                                            <Image
-                                                source={{ uri: url }}
-                                                style={[styles.historyThumb, i === shownIndex && styles.historyThumbActive]}
-                                                resizeMode="cover"
-                                            />
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        )}
-
-                        {/* Save + Generate buttons */}
-                        <View style={styles.generateRow}>
-                            <TouchableOpacity
-                                style={[styles.saveButton, !refinedData && styles.saveButtonDisabled]}
-                                onPress={handleSave}
-                                disabled={!refinedData}
-                            >
-                                <Text style={styles.saveButtonText}>Save</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.generateButton, !refinedData && styles.generateButtonDisabled]}
-                                onPress={handleGenerate}
-                                disabled={!refinedData || isGenerating}
-                            >
-                                {isGenerating ? (
-                                    <ActivityIndicator color="#FFFFFF" size="small" />
-                                ) : (
-                                    <Text style={styles.generateButtonText}>Generate</Text>
-                                )}
-                            </TouchableOpacity>
-                            {showSaved && <Text style={styles.savedText}>Saved ✓</Text>}
-                        </View>
-                        {generateError && <Text style={styles.generateError}>{generateError}</Text>}
-                    </View>
+                    <CanvasStage
+                        showGrid={showGrid}
+                        showElements={showElements}
+                        onToggleGrid={() => setShowGrid((v) => !v)}
+                        onToggleElements={() => setShowElements((v) => !v)}
+                        canvasZoom={canvasZoom}
+                        displaySize={displaySize}
+                        activeTool={activeTool}
+                        onCanvasPointerDown={interaction.handleCanvasPointerDown}
+                        onSizerLayout={(e: any) => setCanvasAreaSize({
+                            width: e.nativeEvent.layout.width,
+                            height: e.nativeEvent.layout.height,
+                        })}
+                        shownImage={generation.shownImage}
+                        elements={elements}
+                        hoveredIndex={hoveredIndex}
+                        onHoverIn={(i: number) => setHoveredIndex(i)}
+                        onHoverOut={() => setHoveredIndex(null)}
+                        alignGuides={interaction.alignGuides}
+                        flashOn={generation.flashOn}
+                        showEmptyHighlight={generation.showEmptyHighlight}
+                        onDragStart={interaction.handleDragStart}
+                        onDragMove={interaction.handleDragMove}
+                        onDragEnd={interaction.handleDragEnd}
+                        onResizeStart={interaction.handleResizeStart}
+                        onResizeMove={interaction.handleResizeMove}
+                        onResizeEnd={interaction.handleResizeEnd}
+                        onContextMenu={editing.openContextMenu}
+                        createDraft={interaction.createDraft}
+                        images={generation.images}
+                        shownIndex={generation.shownIndex}
+                        onView={generation.setViewIndex}
+                        dataMissing={!refinedData}
+                        isGenerating={generation.isGenerating}
+                        showSaved={generation.showSaved}
+                        generateError={generation.generateError}
+                        onSave={generation.handleSave}
+                        onGenerate={generation.handleGenerate}
+                    />
                 </View>
             </View>
 
-            {/* Right-click context menu for an element box: a transparent
-                full-viewport catcher (closes the menu on any other click)
-                plus the fixed-position menu itself. */}
-            {contextMenu && (
-                <>
-                    <View style={styles.menuBackdrop} onPointerDown={() => setContextMenu(null)} />
-                    {(() => {
-                        const element = refinedData?.compositional_deconstruction.elements[contextMenu.index];
-                        if (!element) return null;
-                        return (
-                            <View style={[styles.contextMenu, { left: contextMenu.x, top: contextMenu.y }]}>
-                                <TouchableOpacity style={styles.contextMenuItem} onPress={() => openEditor('desc')}>
-                                    <Text style={styles.contextMenuItemText}>Edit description</Text>
-                                </TouchableOpacity>
-                                {element.type === 'text' && (
-                                    <TouchableOpacity style={styles.contextMenuItem} onPress={() => openEditor('text')}>
-                                        <Text style={styles.contextMenuItemText}>Edit text</Text>
-                                    </TouchableOpacity>
-                                )}
-                                <View style={styles.contextMenuDivider} />
-                                <TouchableOpacity style={styles.contextMenuItemDanger} onPress={deleteElement}>
-                                    <Text style={styles.contextMenuItemTextDanger}>Delete</Text>
-                                </TouchableOpacity>
-                            </View>
-                        );
-                    })()}
-                </>
+            {/* Right-click context menu for an element box. */}
+            {editing.contextMenu && (
+                <ContextMenu
+                    menu={editing.contextMenu}
+                    element={elements[editing.contextMenu.index]}
+                    onClose={() => editing.setContextMenu(null)}
+                    onEditDesc={() => editing.openEditor('desc')}
+                    onEditText={() => editing.openEditor('text')}
+                    onDelete={editing.deleteElement}
+                />
             )}
 
-            {/* Element field editor dialog (desc or text) */}
-            {editing && (() => {
-                const element = refinedData?.compositional_deconstruction.elements[editing.index];
-                if (!element) return null;
-                const isDesc = editing.field === 'desc';
-                return (
-                    <View style={styles.dialogBackdrop} onPointerDown={() => setEditing(null)}>
-                        <View style={styles.dialogCard} onPointerDown={(e) => e.stopPropagation()}>
-                            <Text style={styles.dialogTitle}>{isDesc ? 'Edit description' : 'Edit text'}</Text>
-                            <TextInput
-                                style={styles.dialogInput}
-                                value={draft}
-                                onChangeText={setDraft}
-                                multiline
-                                textAlignVertical="top"
-                                selectTextOnFocus
-                                autoFocus
-                            />
-
-                            {/* Font options — text elements only. Applied on
-                                save; absent/defaults keep the plain look. */}
-                            {!isDesc && (
-                                <View style={styles.fontOptions}>
-                                    <View style={styles.fontField}>
-                                        <Text style={styles.fontLabel}>Font size (px)</Text>
-                                        <View style={styles.sizeCombo}>
-                                            <TextInput
-                                                testID="font-size-input"
-                                                style={styles.sizeInput}
-                                                value={fontOpt.size}
-                                                onChangeText={(v) => setFontOpt((p) => ({ ...p, size: v.replace(/[^0-9]/g, '') }))}
-                                                keyboardType="numeric"
-                                                selectTextOnFocus
-                                            />
-                                            <TouchableOpacity
-                                                testID="font-size-menu"
-                                                style={styles.sizeChevron}
-                                                onPress={() => setSizeMenuOpen((o) => !o)}
-                                            >
-                                                <ChevronDown
-                                                    size={14}
-                                                    color="#888"
-                                                    style={{ transform: [{ rotate: sizeMenuOpen ? '180deg' : '0deg' }] } as any}
-                                                />
-                                            </TouchableOpacity>
-                                        </View>
-                                        {sizeMenuOpen && (
-                                            <View style={styles.sizeList}>
-                                                {FONT_SIZE_PRESETS.map((s) => (
-                                                    <TouchableOpacity
-                                                        key={s}
-                                                        testID={`font-size-${s}`}
-                                                        style={styles.sizeOption}
-                                                        onPress={() => {
-                                                            setFontOpt((p) => ({ ...p, size: String(s) }));
-                                                            setSizeMenuOpen(false);
-                                                        }}
-                                                    >
-                                                        <Text style={styles.sizeOptionText}>{s}</Text>
-                                                    </TouchableOpacity>
-                                                ))}
-                                            </View>
-                                        )}
-                                    </View>
-                                    <SelectField
-                                        id="font-choice"
-                                        label="Font"
-                                        value={fontOpt.font === '' ? 'Default' : fontOpt.font}
-                                        options={['Default', ...FONT_CHOICES]}
-                                        onChange={(v) => setFontOpt((p) => ({ ...p, font: v === 'Default' ? '' : v }))}
-                                    />
-                                    <View style={styles.fontToggles}>
-                                        <TouchableOpacity
-                                            testID="font-bold"
-                                            style={[styles.fontToggle, fontOpt.bold && styles.fontToggleActive]}
-                                            onPress={() => setFontOpt((p) => ({ ...p, bold: !p.bold }))}
-                                        >
-                                            <Text style={[styles.fontToggleText, { fontWeight: '700' }, fontOpt.bold && { color: '#FFFFFF' }]}>B</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            testID="font-italic"
-                                            style={[styles.fontToggle, fontOpt.italic && styles.fontToggleActive]}
-                                            onPress={() => setFontOpt((p) => ({ ...p, italic: !p.italic }))}
-                                        >
-                                            <Text style={[styles.fontToggleText, { fontStyle: 'italic' }, fontOpt.italic && { color: '#FFFFFF' }]}>I</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            )}
-
-                            <View style={styles.dialogActions}>
-                                <TouchableOpacity style={styles.dialogCancelButton} onPress={() => setEditing(null)}>
-                                    <Text style={styles.dialogCancelText}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.dialogSaveButton, !draft.trim() && styles.dialogButtonDisabled]}
-                                    onPress={saveEdit}
-                                    disabled={!draft.trim()}
-                                >
-                                    <Text style={styles.dialogSaveText}>Save</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                );
-            })()}
+            {/* Element field editor dialog (desc or text). */}
+            {editing.editing && (
+                <EditDialog
+                    editing={editing.editing}
+                    element={elements[editing.editing.index]}
+                    draft={editing.draft}
+                    onDraftChange={editing.setDraft}
+                    fontOpt={editing.fontOpt}
+                    onFontOptChange={editing.setFontOpt}
+                    sizeMenuOpen={editing.sizeMenuOpen}
+                    onToggleSizeMenu={editing.setSizeMenuOpen}
+                    onSave={editing.saveEdit}
+                    onClose={() => editing.setEditing(null)}
+                />
+            )}
 
             {/* Settings dialog (LLM + image generation endpoints/credentials) */}
             {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
         </SafeAreaView>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#FFFFFF',
-    },
-    mainContent: {
-        flex: 1,
-        flexDirection: 'row',
-    },
-    toolbar: {
-        width: 70,
-        backgroundColor: '#F8F9FA',
-        borderRightWidth: 1,
-        borderRightColor: '#EEEEEE',
-        alignItems: 'center',
-        paddingTop: 20,
-    },
-    toolButton: {
-        marginBottom: 30,
-        padding: 10,
-    },
-    toolButtonGap: {
-        marginTop: 20,
-    },
-    toolButtonActive: {
-        backgroundColor: '#007AFF',
-        borderRadius: 8,
-    },
-    canvasArea: {
-        flex: 1,
-        flexDirection: 'column',
-    },
-    header: {
-        height: 60,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EEEEEE',
-    },
-    titleInput: {
-        flex: 1,
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#333',
-        textAlign: 'center',
-    },
-    // Settings gear in the header's top-right corner (matches toolbar icon size).
-    settingsButton: {
-        padding: 10,
-        marginLeft: 12,
-    },
-    metadataContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        backgroundColor: '#FDFDFD',
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EEEEEE',
-    },
-    // One metadata section (Aesthetics / Lighting / Art Style / Photo /
-    // Medium / Palette): an equal share of the row, capped at 20% of its
-    // width, with content wrapping inside the section.
-    metadataGroup: {
-        flex: 1,
-        maxWidth: '20%',
-        marginRight: 24,
-    },
-    groupLabel: {
-        fontSize: 10,
-        color: '#AAA',
-        textTransform: 'uppercase',
-        marginBottom: 4,
-        fontWeight: 'bold',
-    },
-    tag: {
-        backgroundColor: '#F0F0F0',
-        borderRadius: 12,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        marginHorizontal: 2,
-        marginBottom: 4,
-    },
-    tagText: {
-        fontSize: 12,
-        color: '#444',
-    },
-    tagRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-    },
-    backgroundContainer: {
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        backgroundColor: '#FDFDFD',
-        borderBottomWidth: 1,
-        borderBottomColor: '#EEEEEE',
-    },
-    backgroundText: {
-        fontSize: 14,
-        color: '#444',
-        lineHeight: 20,
-    },
-    canvasContainer: {
-        flex: 1,
-        padding: 20,
-        backgroundColor: '#F0F0F0',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    // "Show grid" / "Show elements" checkboxes, pinned to the canvas area's
-    // top-right corner.
-    canvasToggles: {
-        position: 'absolute',
-        top: 8,
-        right: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        zIndex: 5,
-    },
-    showElementsToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    checkbox: {
-        width: 16,
-        height: 16,
-        borderRadius: 4,
-        borderWidth: 1.5,
-        borderColor: '#999',
-        backgroundColor: '#FFFFFF',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 6,
-    },
-    checkboxChecked: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
-    },
-    checkboxLabel: {
-        fontSize: 12,
-        color: '#555',
-    },
-    canvasSizer: {
-        flex: 1,
-        // Force full width: the parent centers children, which would otherwise
-        // shrink the sizer to its content width (0 until measured — a deadlock).
-        alignSelf: 'stretch',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    canvas: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-    },
-    generatedImage: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-    },
-    generateRow: {
-        marginTop: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-    },
-    generateButton: {
-        backgroundColor: '#007AFF',
-        borderRadius: 8,
-        paddingHorizontal: 24,
-        paddingVertical: 10,
-        minWidth: 120,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    generateButtonDisabled: {
-        backgroundColor: '#B0D4FF',
-    },
-    generateButtonText: {
-        color: '#FFFFFF',
-        fontSize: 15,
-        fontWeight: '600',
-    },
-    // Secondary Save button, shown to the left of Generate.
-    saveButton: {
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#007AFF',
-        paddingHorizontal: 24,
-        paddingVertical: 10,
-        marginRight: 12,
-        minWidth: 96,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#FFFFFF',
-    },
-    saveButtonDisabled: {
-        borderColor: '#B0D4FF',
-        backgroundColor: '#F5F9FF',
-    },
-    saveButtonText: {
-        color: '#007AFF',
-        fontSize: 15,
-        fontWeight: '600',
-    },
-    savedText: {
-        marginLeft: 14,
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#30A46C',
-    },
-    generateError: {
-        marginTop: 8,
-        fontSize: 13,
-        color: '#E53935',
-    },
-    // Horizontal strip of generated-image thumbnails (view history).
-    historyStrip: {
-        alignSelf: 'stretch',
-        marginTop: 16,
-        marginBottom: 4,
-    },
-    historyLabel: {
-        fontSize: 11,
-        color: '#AAA',
-        textTransform: 'uppercase',
-        fontWeight: 'bold',
-        marginBottom: 6,
-    },
-    historyRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    historyThumb: {
-        width: 64,
-        height: 64,
-        borderRadius: 6,
-        marginRight: 8,
-        borderWidth: 2,
-        borderColor: '#DDD',
-        backgroundColor: '#F5F5F5',
-    },
-    historyThumbActive: {
-        borderColor: '#007AFF',
-    },
-    canvasPlaceholderText: {
-        color: '#CCC',
-        fontSize: 20,
-    },
-    // Floating tooltip for the hovered text element.
-    tooltip: {
-        position: 'absolute',
-        backgroundColor: '#333333',
-        borderRadius: 6,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-        zIndex: 10,
-        shadowColor: '#000',
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 6,
-    },
-    tooltipText: {
-        fontSize: 12,
-        color: '#FFFFFF',
-        lineHeight: 17,
-    },
-    tooltipArrow: {
-        position: 'absolute',
-        width: 10,
-        height: 10,
-        backgroundColor: '#333333',
-        transform: [{ rotate: '45deg' }],
-    },
-    // Right-click context menu: a transparent full-viewport catcher and the
-    // fixed-position menu rendered on top of it.
-    menuBackdrop: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 90,
-    },
-    contextMenu: {
-        position: 'fixed',
-        zIndex: 91,
-        width: 180,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#E0E0E0',
-        paddingVertical: 6,
-        shadowColor: '#000',
-        shadowOpacity: 0.18,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 8,
-    },
-    contextMenuItem: {
-        paddingHorizontal: 14,
-        paddingVertical: 9,
-    },
-    contextMenuItemText: {
-        fontSize: 14,
-        color: '#333',
-    },
-    contextMenuDivider: {
-        height: 1,
-        backgroundColor: '#EEE',
-        marginVertical: 4,
-    },
-    contextMenuItemDanger: {
-        paddingHorizontal: 14,
-        paddingVertical: 9,
-    },
-    contextMenuItemTextDanger: {
-        fontSize: 14,
-        color: '#FF3B30',
-        fontWeight: '600',
-    },
-    // Element field editor dialog: dimmed full-viewport backdrop with a
-    // centered card.
-    dialogBackdrop: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
-        zIndex: 95,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    dialogCard: {
-        width: 420,
-        maxWidth: '90%',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 10,
-        padding: 20,
-        zIndex: 96,
-    },
-    dialogTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#333',
-        marginBottom: 12,
-    },
-    dialogInput: {
-        minHeight: 90,
-        maxHeight: 200,
-        borderColor: '#DDD',
-        borderWidth: 1,
-        borderRadius: 6,
-        padding: 10,
-        fontSize: 14,
-        color: '#333',
-        backgroundColor: '#FAFAFA',
-    },
-    // Font options in the text edit dialog.
-    fontOptions: {
-        marginTop: 12,
-    },
-    fontField: {
-        marginBottom: 12,
-    },
-    fontLabel: {
-        fontSize: 10,
-        color: '#AAA',
-        textTransform: 'uppercase',
-        fontWeight: 'bold',
-        marginBottom: 4,
-    },
-    sizeCombo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderColor: '#DDD',
-        borderWidth: 1,
-        borderRadius: 6,
-        backgroundColor: '#FAFAFA',
-    },
-    sizeInput: {
-        flex: 1,
-        padding: 9,
-        fontSize: 14,
-        color: '#333',
-    },
-    sizeChevron: {
-        padding: 10,
-    },
-    sizeList: {
-        borderColor: '#DDD',
-        borderTopWidth: 0,
-        borderWidth: 1,
-        borderRadius: 6,
-        marginTop: -4,
-        backgroundColor: '#FFFFFF',
-    },
-    sizeOption: {
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
-    },
-    sizeOptionText: {
-        fontSize: 14,
-        color: '#333',
-    },
-    fontToggles: {
-        flexDirection: 'row',
-        marginTop: 2,
-    },
-    fontToggle: {
-        width: 36,
-        height: 32,
-        borderRadius: 6,
-        borderWidth: 1,
-        borderColor: '#DDD',
-        backgroundColor: '#FFFFFF',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 8,
-    },
-    fontToggleActive: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
-    },
-    fontToggleText: {
-        fontSize: 14,
-        color: '#333',
-    },
-    dialogActions: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginTop: 16,
-    },
-    dialogCancelButton: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        marginRight: 10,
-        borderRadius: 6,
-        borderWidth: 1,
-        borderColor: '#DDD',
-        backgroundColor: '#FFFFFF',
-    },
-    dialogCancelText: {
-        fontSize: 14,
-        color: '#555',
-    },
-    dialogSaveButton: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 6,
-        backgroundColor: '#007AFF',
-    },
-    dialogSaveText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#FFFFFF',
-    },
-    dialogButtonDisabled: {
-        backgroundColor: '#B0D4FF',
-    },
-    // Full-canvas layer holding the element boxes (pointer-transparent in tool mode).
-    elementLayer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-    },
-    // Live rectangle preview while dragging out a new element.
-    createDraft: {
-        position: 'absolute',
-        borderWidth: 1,
-        borderStyle: 'dashed',
-        backgroundColor: 'rgba(0, 122, 255, 0.08)',
-    },
-    // Hint shown below the canvas while a creation tool is armed.
-    toolHint: {
-        marginTop: 12,
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#007AFF',
-    },
-});

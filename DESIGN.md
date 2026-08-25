@@ -11,13 +11,29 @@ DrawBoard 是一个「自然语言 → 结构化图片提示词 → 画布编辑
 src/app/
   _layout.tsx            根布局（expo-router Stack）
   index.tsx              首页：输入描述、选比例/尺寸，最近设计列表
-  design.tsx             设计页：元数据栏、画布、元素编辑、生成/保存
+  design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
   types.ts               RefinedPrompt / CanvasElement / isEmptyElement
+  design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
+    constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
+    canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides
+    designStyles.ts      设计页全部 StyleSheet（不计入行数约束）
+    useHistory.ts        快照式撤销/重做（begin/commit/cancel/recordAction/undo/redo/reset）
+    useCanvasInteraction.ts  画布拖动/缩放（中心对齐辅助线）+ 拖拽创建元素
+    useElementEditing.ts     右键菜单、desc/text 编辑对话框（含字体选项）、删除元素
+    useGeneration.ts     生成（设置校验→空元素校验→按需改写 desc→规范化→请求）、保存、图片历史
   components/
     ElementBox.tsx       画布上的单个元素框（拖动、四角缩放、右键菜单载体）
     ColorPalette.tsx     调色板（色块 + 添加按钮 + 弹出编辑 popover，portal 到 body）
     ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
     SettingsDialog.tsx   设置对话框（两个下拉 + 五个文本框，内联展开式下拉）
+    design/              设计页展示组件（props 驱动，无自身状态）
+      CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形）、历史条与保存/生成行
+      Toolbar.tsx        左侧工具栏（添加文字/对象 + 撤销/重做）
+      MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
+      HistoryStrip.tsx   生成图缩略图横条
+      GenerateRow.tsx    Save + Generate 按钮行（保存成功提示、错误行）
+      ContextMenu.tsx    元素右键菜单
+      EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
   services/
     PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
     IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
@@ -100,6 +116,8 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ## design.tsx（设计页）
 
+页面文件只做状态声明与组合：交互逻辑在 `src/app/design/` 的四个 hooks（useHistory / useCanvasInteraction / useElementEditing / useGeneration），展示在 `src/app/components/design/` 的组件（见「文件结构」节）；滚轮缩放、居中滚动、Esc 取消工具、promptData 加载等页面级 effect 仍在 design.tsx。以下各小节描述的行为与拆分前一致。
+
 ### 初始化
 - `designId`：带 `id` 参数时复用（重开已保存设计），否则现场生成。
 - 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；`size` 参数 → 画布逻辑尺寸；`images` 参数 → 图片历史，`viewIndex` 指向最新一张。
@@ -130,7 +148,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### 元素框（ElementBox）
 每个有 `bbox` 的元素渲染为蓝色虚线框，绝对定位于画布（归一化 bbox × 显示尺寸换算像素）：
-- 左上角图标：text 元素橙色「T」，obj 元素蓝色图片图标；框内显示 `text`（text 元素）或 `desc`（obj 元素）。
+- 左上角图标：text 元素橙色「T」，obj 元素蓝色图片图标；框内显示 `text`（text 元素）或 `desc`（obj 元素）。框与文字设 `userSelect: 'none'`（UI 标签不可选中）：web 上拖动/缩放扫过文字会触发原生文本选择，`selectionchange` 事件让 RN-web 的 responder 系统**中途终止手势**，缩放会静默卡在第一步。
 - **拖动移动**：框内部（四边内缩 `moveInset = min(14, min(w,h)/4)`）为移动热区，PanResponder 位移 >3px 生效；手势开始时记录 base bbox，实时增量 = 像素位移 ÷ 显示尺寸 × 1000，clamp 到画布内并取整后写回 `refinedData`。
 - **四角缩放**：四角 handle（14px，hitSlop 10）为子级手势，天然赢过移动热区；只拉伸被抓角落点/边，clamp 到画布与最小尺寸 `MIN_ELEMENT_SIZE = 20`（0–1000 单位），取整写回。
 - 悬停：白底高亮；悬停 text 元素时显示黑色 tooltip（展示 `desc`，优先在框上方，空间不足翻到下方，水平钳制在画布内）。
