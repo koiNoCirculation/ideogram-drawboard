@@ -35,6 +35,13 @@ export interface RefinedPrompt {
                 bold?: boolean;
                 italic?: boolean;
             };
+            /**
+             * Layer-list eye toggle. Absent / true = visible. When false the
+             * element's box is hidden on the canvas and the element is
+             * excluded from the prompt sent to image generation — but it
+             * stays in the document (data untouched, re-showing restores it).
+             */
+            visible?: boolean;
         }>;
     };
 }

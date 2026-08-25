@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from './constants';
 
 export const styles = StyleSheet.create({
     container: {
@@ -166,13 +167,14 @@ export const styles = StyleSheet.create({
         left: 0,
     },
     // Canvas rulers: strips along the top and left edges, 0-1000 on both
-    // axes. Rendered above everything on the canvas but pointer-transparent.
+    // axes. They extend OUTWARD from the canvas (above the top edge, left of
+    // the left edge) inside the canvas frame, so the semi-transparent strips
+    // never cover canvas content. Pointer-transparent.
     rulerTop: {
         position: 'absolute',
         top: 0,
-        left: 0,
-        right: 0,
-        height: 20,
+        left: RULER_LEFT_WIDTH,
+        height: RULER_TOP_HEIGHT,
         backgroundColor: 'rgba(255, 255, 255, 0.85)',
         borderBottomWidth: 1,
         borderBottomColor: '#007AFF',
@@ -180,10 +182,9 @@ export const styles = StyleSheet.create({
     },
     rulerLeft: {
         position: 'absolute',
-        top: 0,
+        top: RULER_TOP_HEIGHT,
         left: 0,
-        bottom: 0,
-        width: 30,
+        width: RULER_LEFT_WIDTH,
         backgroundColor: 'rgba(255, 255, 255, 0.85)',
         borderRightWidth: 1,
         borderRightColor: '#007AFF',
@@ -525,6 +526,42 @@ export const styles = StyleSheet.create({
     },
     dialogButtonDisabled: {
         backgroundColor: '#B0D4FF',
+    },
+    // Layer list (Photoshop-style), docked at the canvas area's bottom-right
+    // corner: eye toggle + type icon + 30-char label per element, max 8 rows
+    // then a vertical scrollbar.
+    layerPanel: {
+        position: 'absolute',
+        right: 12,
+        bottom: 12,
+        width: 280,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        paddingVertical: 8,
+        zIndex: 20,
+        overflow: 'scroll',
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 4,
+    },
+    layerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+    },
+    layerRowDivider: {
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+    layerLabel: {
+        flex: 1,
+        marginLeft: 8,
+        fontSize: 12,
+        color: '#333',
     },
     // Full-canvas layer holding the element boxes (pointer-transparent in tool mode).
     elementLayer: {

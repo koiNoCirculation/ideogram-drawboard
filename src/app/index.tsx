@@ -13,7 +13,7 @@ import {
     View,
 } from 'react-native';
 import { SettingsDialog } from './components/SettingsDialog';
-import { Design, loadDesigns } from './services/designStore';
+import { Design, loadDesigns, newDesignId, setDesignHandoff } from './services/designStore';
 import { refine } from './services/PromptRefiner';
 import { getMissingSettings, loadSettings } from './services/settings';
 
@@ -37,18 +37,10 @@ export default function IndexScreen() {
         setDesigns(loadDesigns());
     }, []);
 
-    // Re-open a saved design, restoring its prompt, canvas size, and generated
-    // image history.
+    // Re-open a saved design: the full payload lives in the design store, so
+    // only the id goes in the URL.
     const handleOpenDesign = (design: Design) => {
-        router.push({
-            pathname: '/design',
-            params: {
-                promptData: JSON.stringify(design.prompt),
-                size: [String(design.size.width), String(design.size.height)],
-                images: JSON.stringify(design.images),
-                id: design.id,
-            },
-        });
+        router.push({ pathname: '/design', params: { id: design.id } });
     };
 
     // Synchronize width/height when preset ratio changes
@@ -110,11 +102,15 @@ export default function IndexScreen() {
             const ratioString = selectedRatio === 'custom' ? `${width}:${height}` : selectedRatio;
             const refinedPrompt = await refine(await loadSystemPrompt(), prompt, ratioString);
 
-            // Pass the JSON prompt to design.tsx
-            router.push({
-                pathname: '/design',
-                params: { promptData: refinedPrompt, size: [width, height] },
+            // The refined prompt is too large for URL query params (HTTP 431):
+            // stash it as a handoff keyed by a fresh design id and navigate
+            // with the id alone.
+            const id = newDesignId();
+            setDesignHandoff(id, {
+                promptData: refinedPrompt,
+                size: { width: parseInt(width, 10) || 0, height: parseInt(height, 10) || 0 },
             });
+            router.push({ pathname: '/design', params: { id } });
         } catch (error: any) {
             Alert.alert('Error', error.message || 'Failed to generate prompt. Please try again.');
         } finally {

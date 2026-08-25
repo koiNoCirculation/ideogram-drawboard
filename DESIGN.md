@@ -15,7 +15,7 @@ src/app/
   types.ts               RefinedPrompt / CanvasElement / isEmptyElement
   design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
     constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
-    canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides
+    canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides / withVisibleElementsOnly（生成前剔除隐藏元素）
     designStyles.ts      设计页全部 StyleSheet（不计入行数约束）
     useHistory.ts        快照式撤销/重做（begin/commit/cancel/recordAction/undo/redo/reset）
     useCanvasInteraction.ts  画布拖动/缩放（中心对齐辅助线）+ 拖拽创建元素
@@ -27,8 +27,9 @@ src/app/
     ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
     SettingsDialog.tsx   设置对话框（两个下拉 + 五个文本框，内联展开式下拉）
     design/              设计页展示组件（props 驱动，无自身状态）
-      CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形 + 标尺）、历史条与保存/生成行
-      CanvasRulers.tsx   画布上/左边缘标尺（0–1000 双轴，随画布缩放、与网格对齐，数字密度按档位）
+      CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形 + 标尺 + 图层列表）、历史条与保存/生成行
+      CanvasRulers.tsx   画布上/左边缘标尺（0–1000 双轴，向外延伸、随画布缩放、与网格对齐，数字密度按档位）
+      LayerList.tsx      图层列表（画布区右下角：眼睛显隐开关 + 类型图标 + 30 字截断标签，最多 8 行）
       Toolbar.tsx        左侧工具栏（添加文字/对象 + 撤销/重做）
       MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
       HistoryStrip.tsx   生成图缩略图横条
@@ -39,7 +40,7 @@ src/app/
     PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
     IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
     settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
-    designStore.ts       localStorage 设计持久化（{prompt, images} 框架）
+    designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ newDesignId
     color.ts             hex/RGB/HSV 互转与 clamp 工具
   test/services/         jest 单测（PromptRefiner、IdeogramPrompt、settings）
 public/
@@ -66,6 +67,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - `desc`：描述（obj 必填内容；text 也有）。
 - `text`：仅 text 元素，要渲染进画面的文字（原样保留）。
 - `extra_fontoption`（可选，仅 text 元素）：部分对象 `{ size?: number, font?: string, bold?: boolean, italic?: boolean }`，仅包含用户显式改过的非默认值，默认值不入库（见「元素框」节）。
+- `visible`（可选，仅 DrawBoard UI 状态，不属于 Ideogram 契约）：`false` 时元素框隐藏、且该元素不参与生成（`withVisibleElementsOnly` 在发送前剔除，同时剥离 `visible` 键）；缺省/`true` = 可见。隐藏元素不触发空元素校验；保存的设计保留该键，重开时恢复显隐状态（见「图层列表」节）。
 - 空元素判定 `isEmptyElement`：text 无 `text`、或 obj 无 `desc`。
 
 ### Design（designStore.ts）
@@ -95,9 +97,10 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ## 页面与导航
 
-`index.tsx`（默认页）⇄ `design.tsx`。
-- 首页「开始设计」→ `router.push('/design', { promptData, size })`。
-- 首页点最近设计卡片 → 带 `promptData / size / images / id` 四个参数重开设计（恢复画布尺寸、图片历史，显示最新一张）。
+`index.tsx`（默认页）⇄ `design.tsx`。**导航只在 URL 里带设计 `id`**——LLM 改写后的 prompt 太大，放 query 参数会触发 HTTP 431（请求行过长），所以走 localStorage handoff（见下）。
+- 首页「开始设计」→ 生成新设计 id（`newDesignId`）→ `setDesignHandoff(id, { promptData, size })` 把 LLM 结果与画布尺寸暂存到 localStorage（key `drawboard.handoff`，按 id 的映射，上限 10 条、超了逐出最旧）→ `router.push('/design', { id })`。handoff 读时不消费，未保存设计的刷新/前进后退仍能解析；Save 成功时 `clearDesignHandoff(id)`（store 成为唯一事实来源，避免重开时读到编辑前的旧 payload）。
+- 首页点最近设计卡片 → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
+- 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
 - 代码中无显式返回按钮，返回用浏览器/路由后退。
 
 ## index.tsx（首页）
@@ -112,7 +115,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
    - 选非 custom 比例时：以 1024 为基准算出默认 W/H；随后在 W 或 H 输入数字，另一边按比例自动联动（取整）。
    - 选 custom 后 W/H 互不联动，长宽比取 `${W}:${H}`。
 3. 多行 prompt 输入框（占位符 "a golden retriever on a skateboard"），占满剩余空间。
-4. 「开始设计」按钮：prompt 非空且 LLM 设置项齐全（缺失则 Alert 列出缺项并停止）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串 → 跳 design 页。失败弹 Alert。
+4. 「开始设计」按钮：prompt 非空且 LLM 设置项齐全（缺失则 Alert 列出缺项并停止）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。失败弹 Alert。
 5. 页面右上角齿轮按钮（绝对定位）：打开设置对话框。
 
 ## design.tsx（设计页）
@@ -120,8 +123,8 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 页面文件只做状态声明与组合：交互逻辑在 `src/app/design/` 的四个 hooks（useHistory / useCanvasInteraction / useElementEditing / useGeneration），展示在 `src/app/components/design/` 的组件（见「文件结构」节）；滚轮缩放、居中滚动、Esc 取消工具、promptData 加载等页面级 effect 仍在 design.tsx。以下各小节描述的行为与拆分前一致。
 
 ### 初始化
-- `designId`：带 `id` 参数时复用（重开已保存设计），否则现场生成。
-- 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；`size` 参数 → 画布逻辑尺寸；`images` 参数 → 图片历史，`viewIndex` 指向最新一张。
+- `designId`：首页导航恒带 `id`（新设计由首页生成、重开设计复用原 id）；裸访问 /design 无 id 时现场生成（无数据，显示占位）。
+- 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；store 里的 `images` → 图片历史，`viewIndex` 指向最新一张。
 - 页头：可编辑标题 + 右侧设置齿轮按钮（打开设置对话框，见「设置」节）。
 
 ### 元数据栏（六个部分，各 ≤20% 宽度，内部换行）
@@ -139,11 +142,11 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### 画布
 - **Show grid / Show elements 复选框**：画布区右上角固定两个小复选框（默认都勾选）。"Show elements"：取消勾选时所有 prompt 元素框（及悬停 tooltip）隐藏，勾选恢复；隐藏只是 `display:none`，不改动数据，且不会显示 "Canvas Area" 占位（占位仅在没有任何元素时出现）；创建工具在隐藏状态下仍可正常拖出新元素（新建元素属于 prompt 元素，同样受开关控制显隐）。"Show grid"：取消勾选时网格线隐藏，**且网格吸附关闭**（拖动/缩放/创建不再吸附，按自由坐标移动）。
-- 画布区 `onLayout` 测得可用尺寸后，`scale = min(可用宽/逻辑宽, 可用高/逻辑高)`，画布显示尺寸 = 逻辑尺寸 × scale（保持长宽比）。
-- **滚轮缩放（居中缩放）**：在画布区上滚轮缩放画布（每档 ×/÷1.1，范围 1–8），只放大画布及其内部元素/元素框（几何全部基于含缩放的 `displaySize` 计算，自动跟随）；画布外的组件（元数据栏、按钮、复选框等）不参与缩放。放大后画布区变为滚动容器（`overflow: scroll`，父容器改左上对齐、画布用 `margin: auto`——仍放得下的轴保持居中，溢出的轴完整可滚），**每次缩放后自动把滚动位置滚到中心**，即画布中心始终停在视口中心（居中缩放）；之后可用滚动条拖动浏览。滚轮事件用非 passive 原生监听并 `preventDefault`，缩放时容器不跟着滚。缩小回 1 后恢复居中、无滚动条；重新加载/重开设计时缩放复位为 1。
+- 画布区 `onLayout` 测得可用尺寸后，`scale = min((可用宽 − 30)/逻辑宽, (可用高 − 20)/逻辑高)`（给向外延伸的标尺条留出空间，见下），画布显示尺寸 = 逻辑尺寸 × scale（保持长宽比）。
+- **滚轮缩放（居中缩放）**：在画布区上滚轮缩放画布（每档 ×/÷1.1，范围 1–8），只放大画布及其内部元素/元素框/标尺（几何全部基于含缩放的 `displaySize` 计算，自动跟随）；画布外的组件（元数据栏、按钮、复选框等）不参与缩放。放大后画布区变为滚动容器（`overflow: scroll`，父容器改左上对齐、画布外框用 `margin: auto`——仍放得下的轴保持居中，溢出的轴完整可滚），**每次缩放后自动把滚动位置滚到中心**（滚动目标是含向外标尺的外框中心，再加半条标尺宽度的修正，使**画布中心**始终停在视口中心；放得下的轴表达式为负、钳到 0 即自动居中）（居中缩放）；之后可用滚动条拖动浏览。滚轮事件用非 passive 原生监听并 `preventDefault`，缩放时容器不跟着滚。缩小回 1 后恢复居中、无滚动条；重新加载/重开设计时缩放复位为 1。
 - **网格系统（跟随缩放等级，0–1000 bbox 空间）**：画布上叠加一层细网格线（`repeating-linear-gradient`，pointer-events 关闭），单元格大小按滚轮档位数分档：基础档 100×100 格（10 单位/格）→ 放大 2 档 200×200（5）→ 再 2 档 500×500（2）→ 再 2 档及以上 1000×1000（1 单位/格）。像素间隔按画布宽/高分别换算，所以**单元格长宽比随画布长宽比变化**（归一化空间里是均格的）。
 - **网格吸附**：仅在 **Show grid 勾选**时，当前缩放等级下的网格对编辑操作生效——拖动移动时吸附移动后的原点（尺寸不变）、四角缩放时吸附被抓取的边（对边不动，吸附越界时以约束为准）、创建元素时吸附原点。小于半格的移动会吸附回原位（不产生位移）。
-- **标尺（上边缘 + 左边缘，0–1000 双轴）**：画布内叠加两条标尺条（顶条高 20px、左条宽 30px，白底 85% 透明 + 内侧 1px 蓝边），横轴覆盖 0–1000 单位、纵轴同。标尺在画布内渲染，**随画布一起缩放**；刻度/数字位置与网格用同一套 0–1000→px 换算，**始终与网格线对齐**。数字密度按滚轮档位（`rulerLabelStep`，与 `gridCellUnits` 同档）：0–1 档每 100 单位、2–3 档每 50、4–5 档每 20、5 档以上每 10——每档都是该档网格单元的整数倍，数字恒落在网格线上。数字间中点位置画无数字刻度（与网格同为 `repeating-linear-gradient`，不产生逐刻度节点）；数字盒固定尺寸并钳制在标尺条内（0/1000 不越界）。标尺 pointer-events 关闭，不阻挡画布/元素交互；不随 Show grid 开关显隐。
+- **标尺（上边缘 + 左边缘，0–1000 双轴，向外延伸）**：画布外套一层外框（canvas + 左 30px + 上 20px，`margin:auto` 居中于滚动容器），两条标尺条（顶条高 20px、左条宽 30px，白底 85% 透明 + 内侧 1px 蓝边）渲染在**画布外**（顶条在画布顶边之上、左条在画布左边之左，左上角 30×20 留空），半透明条不遮挡画布内容；横轴覆盖 0–1000 单位、纵轴同。标尺在外框内渲染，**随画布一起缩放**；刻度/数字位置与网格用同一套 0–1000→px 换算，**始终与网格线对齐**。长边数字密度按滚轮档位（`rulerLabelStep`，与 `gridCellUnits` 同档）：0–1 档每 100 单位、2–3 档每 50、4–5 档每 20、5 档以上每 10——每档都是该档网格单元的整数倍，数字恒落在网格线上。**长宽比不为 1:1 时短边标尺按长宽比变稀疏**（`rulerSteps`）：短边间隔 = 长边间隔 × 长/短，且保持 10 的倍数、除不尽时向更稀疏方向取整，使两边每像素的数字密度大致一致（1:1 时两边相同；末档数字可能不到 1000，如 4:3 下短边间隔 140 → 0…980）。数字间中点位置画无数字刻度（与网格同为 `repeating-linear-gradient`，不产生逐刻度节点）；数字盒固定尺寸并钳制在标尺条内（0/1000 不越界）。标尺 pointer-events 关闭，不阻挡画布/元素交互；不随 Show grid 开关显隐。
 - **中心对齐辅助线**：拖动元素时，若其他元素的垂直中心线（x 中心）或水平中心线（y 中心）与拖动元素对应中心线距离 ≤ `ALIGN_GUIDE_THRESHOLD`（10 个 0–1000 单位），在画布上画出该元素中心线的全长红线（1px 红色），并**高亮对应元素**（红色 2px 边框）；最近的一条线各取一条（垂直/水平各一）。松手后辅助线和高亮消失。
 - 背景图 = 历史中当前选中的那张（默认最新），`resizeMode=cover` 铺满画布。
 - `refinedData` 不存在时显示占位文字 "Canvas Area"。
@@ -178,17 +181,25 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
   - 新元素 `desc`/`text` 为空，出现在画布上，需右键填写；创建后工具自动关闭。
 - `Esc` 取消激活工具（并取消进行中的绘制）。
 
+### 图层列表（LayerList）
+Photoshop 风格图层列表，绝对定位于画布区右下角（距边缘 12px，宽 280px，白底 + 浅阴影），每个 prompt 元素一行（行高 34px，行间浅分隔线），无元素时不显示：
+- **眼睛开关**（CheckBox 风格，16px）：默认蓝底白字 Eye（可见）；点击给该元素置 `visible: false`——元素框（及悬停 tooltip）立即从画布消失，眼睛变白底灰 EyeOff；再点一次恢复（移除该键）。行始终保留在列表中；切换计撤销栈一步。与 "Show elements" 开关互不影响（后者隐藏全部元素框且不动数据）。
+- **类型图标**：与画布元素框左上角图标一致（text 橙色「T」/ obj 蓝色图片图标，复用 ElementBox 导出的图标样式）。
+- **标签**：obj 显示 `desc`、text 显示 `text`，超 30 字截断加省略号（单行）。
+- 最多显示 **8 行**（maxHeight = 8 行 + 内边距），超出仅面板内**垂直滚动条**（无横向滚动条）。
+- 与生成/保存的关系：发送 `json_prompt` 前先经 `withVisibleElementsOnly` 剔除 `visible: false` 元素（并从保留元素上剥掉 `visible` 键，它不属于 Ideogram 契约）；隐藏元素**不参与空元素校验**；Save 保留 `visible` 键，重开设计时显隐状态恢复（见「数据模型」节）。
+
 ### 生成（Generate）
 0. **设置校验**：`getMissingSettings` 任一项缺失 → 拒绝生成，错误行显示 "Cannot generate — missing settings: …"，不发起 LLM/生成请求。
-1. **空元素校验**：任一元素为空（text 无 text / obj 无 desc）→ 阻止生成，显示错误「Element N is empty — right-click it on the canvas to edit its text/description」，并对空元素红框闪烁（3 个亮灭周期后常亮，直到修复）。
+1. **空元素校验**：任一**可见**元素为空（text 无 text / obj 无 desc；图层列表眼睛关闭的隐藏元素不参与校验）→ 阻止生成，显示错误「Element N is empty — right-click it on the canvas to edit its text/description」（N 为元素在完整列表中的序号，即图层列表行号），并对空元素红框闪烁（3 个亮灭周期后常亮，直到修复）。
 2. **bbox 改写（按需）**：仅当画布编辑可能使 caption 与展示不一致时才执行（`bboxEditedRef` 标记，以下情况置位）：拖动/缩放后 clamp 结果与手势起点 bbox 不同；**修改了文字元素的字体选项（`extra_fontoption` 实际变化，含设值和恢复默认）**；撤销/重做恢复了不同的文档。加载 promptData 时复位；重写合并成功后复位，未再编辑则后续生成继续跳过；生成进行中若又编辑会重新置位。未编辑过画布时直接跳过这次 LLM 调用。执行时读 `system_prompt_rewrite_adapt_bbox.txt`，把当前 `refinedData` JSON 发给 `resolveContradictionInBBox`，LLM 只改写各元素 `desc` 中与用户移动/缩放后 bbox 矛盾的位置描述，其余字段保持不变。
    重置时机刻意放在**合并成功之后**：重写调用失败或返回非法 JSON 时保留标记，下次 Generate 自动重试；重写成功但生成 API 失败也不需重写（desc 已与当前 bbox 一致且已写回 `refinedData`）。
 3. **合并**：只把改写回来的 `desc` 逐个元素合并回本地 caption（要求 index 对应、type 相同、desc 为非空字符串，否则保留原元素）——画布 bbox 永远是唯一事实来源。
-4. **规范化**：`normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
+4. **规范化**：`withVisibleElementsOnly`（剔除隐藏元素，见「图层列表」节）+ `normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
 5. **请求与结果**：POST 到设置中的图像生成端点（`getImageUrl`，Official = 官方 API、Custom = 本地/私有化端点）+ 路径 `/v1/ideogram-v4/generate`，密钥非空时带 `Api-Key` 头；取 `data[0].url` 追加进 `images` 并把画布切到新图；失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。
 
 ### 保存（Save）
-`normalizePromptForIdeogram(refinedData)` + 当前 `images` + 画布尺寸 + `Date.now()` → `upsertDesign` 写 localStorage；按钮旁显示「Saved ✓」1.8s。Save/Generate 在 `refinedData` 缺失时禁用。
+`normalizePromptForIdeogram(refinedData)` + 当前 `images` + 画布尺寸 + `Date.now()` → `upsertDesign` 写 localStorage；元素上的 `visible` 键原样保留（隐藏状态重开时恢复，见「图层列表」节）；按钮旁显示「Saved ✓」1.8s。Save/Generate 在 `refinedData` 缺失时禁用。
 
 ### 图片历史条
 有生成图时画布下方显示「Generated (N)」缩略图横条：点击缩略图在画布查看该图，当前查看的缩略图蓝边高亮。
@@ -227,6 +238,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### designStore.ts
 localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失败返回空数组）/ `getDesign` / `upsertDesign`（按 id 插入或替换，倒序持久化并返回最新列表）。
+导航 handoff（key `drawboard.handoff`，按 id 的 `{ promptData, size }` 映射，上限 10 条、超了逐出最旧）：`setDesignHandoff`（首页发起设计时写入）/ `getDesignHandoff`（设计页按 id 读，不消费）/ `clearDesignHandoff`（Save 成功后清除）；`newDesignId` 生成 `design-<时间戳>-<随机>` id。
 
 ### color.ts
 无依赖的颜色工具：`hexToRgb`（#RGB/#RRGGBB，无 # 亦可）、`rgbToHex`（大写）、`rgbToHsv` / `hsvToRgb`、`clamp01` / `clamp255`、`rgbToCss`。

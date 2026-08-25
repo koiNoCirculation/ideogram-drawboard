@@ -294,3 +294,14 @@ const styles = StyleSheet.create({
     resizeHandle_sw: { bottom: -7, left: -7 },
     resizeHandle_se: { bottom: -7, right: -7 },
 });
+
+/**
+ * The corner icon look (orange "T" for text, blue image icon for obj),
+ * exported so the layer list can show the same icon per element type.
+ */
+export const elementIconStyles = {
+    base: styles.elementIcon,
+    text: styles.elementIconText,
+    obj: styles.elementIconObj,
+    char: styles.elementIconChar,
+};

@@ -29,11 +29,18 @@ export const gridCellUnits = (zoom: number): number => {
     return 10;
 };
 
+// Ruler strip sizes (px): the left strip's width and the top strip's height.
+// The strips extend OUTWARD from the canvas (above its top edge, left of its
+// left edge) so they never occlude the canvas content.
+export const RULER_LEFT_WIDTH = 30;
+export const RULER_TOP_HEIGHT = 20;
+
 /**
- * Ruler number density in bbox units (0-1000 space), tiered by the same
+ * Base ruler number density in bbox units (0-1000 space), tiered by the same
  * wheel levels as the grid: a number every 100 units at levels 0-1, every 50
  * at 2-3, every 20 at 4-5, and every 10 from level 6 up. Each step is a
  * multiple of that level's grid cell, so numbers always sit on grid lines.
+ * This is the LONG axis's step; see rulerSteps for the short axis.
  */
 export const rulerLabelStep = (zoom: number): number => {
     const f = CANVAS_WHEEL_ZOOM_FACTOR;
@@ -41,6 +48,23 @@ export const rulerLabelStep = (zoom: number): number => {
     if (zoom >= f ** 4) return 20;
     if (zoom >= f ** 2) return 50;
     return 100;
+};
+
+/**
+ * Per-axis ruler number steps. The long axis keeps rulerLabelStep; on a
+ * non-square canvas the short axis is made sparser by the aspect ratio (its
+ * label step is scaled up by long/short) so the per-pixel number density
+ * roughly matches on both sides. The short-axis step is always a multiple of
+ * 10 — rounded UP (sparser) when the scaled value is not one, so it stays a
+ * multiple of the grid cell.
+ */
+export const rulerSteps = (zoom: number, width: number, height: number): { top: number; left: number } => {
+    const base = rulerLabelStep(zoom);
+    if (width === height) return { top: base, left: base };
+    const ratio = Math.max(width, height) / Math.min(width, height);
+    // The 1e-9 absorbs float noise around exact multiples of 10.
+    const shortStep = Math.ceil((base * ratio - 1e-9) / 10) * 10;
+    return width > height ? { top: base, left: shortStep } : { top: shortStep, left: base };
 };
 
 /**

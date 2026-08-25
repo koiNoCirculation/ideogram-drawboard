@@ -1,36 +1,47 @@
 import { Text, View } from 'react-native';
-import { gridCellUnits, rulerLabelStep } from '../../design/constants';
+import { gridCellUnits, rulerSteps } from '../../design/constants';
 import { styles } from '../../design/designStyles';
 
 /**
- * Rulers overlaid on the canvas's top and left edges, covering the 0-1000
- * bbox space on both axes. Rendered inside the canvas, so they scale with
- * it, and every tick/label is positioned with the same 0-1000 → px mapping
+ * Rulers along the canvas's top and left edges, covering the 0-1000 bbox
+ * space on both axes. Rendered in the canvas frame (siblings of the canvas),
+ * extending OUTWARD from the canvas — the top strip sits above the canvas's
+ * top edge, the left strip left of its left edge — so the semi-transparent
+ * strips never cover canvas content. They still scale with the canvas, and
+ * every tick/label is positioned with the same 0-1000 → px mapping
  * as the grid, so they stay aligned with its lines. Number density follows
- * the zoom level (rulerLabelStep); unnumbered ticks sit halfway between
- * numbered ones, drawn as a repeating gradient (like the grid) so a dense
- * level doesn't create per-tick views.
+ * the zoom level per axis (rulerSteps: the short axis is sparser by the
+ * aspect ratio); unnumbered ticks sit halfway between numbered ones, drawn
+ * as a repeating gradient (like the grid) so a dense level doesn't create
+ * per-tick views.
  */
 export const CanvasRulers = ({ width, height, zoom }: {
     width: number;
     height: number;
     zoom: number;
 }) => {
-    const step = rulerLabelStep(zoom);
+    const { top: topStep, left: leftStep } = rulerSteps(zoom, width, height);
     const cell = gridCellUnits(zoom);
-    const positions: number[] = [];
-    for (let u = 0; u <= 1000; u += step) positions.push(u);
-    // Minor tick period (px): half of the numbered step, on both axes. Only
-    // drawn when the period is wide enough to read as separate ticks, and
-    // never finer than the grid cell itself.
-    const minorX = Math.max(step / 2, cell) / 1000 * width;
-    const minorY = Math.max(step / 2, cell) / 1000 * height;
+    const positionsFor = (step: number) => {
+        const positions: number[] = [];
+        for (let u = 0; u <= 1000; u += step) positions.push(u);
+        return positions;
+    };
+    const topPositions = positionsFor(topStep);
+    const leftPositions = positionsFor(leftStep);
+    // Minor tick period (px): half of the axis's numbered step. Only drawn
+    // when the period is wide enough to read as separate ticks, and never
+    // finer than the grid cell itself.
+    const minorX = Math.max(topStep / 2, cell) / 1000 * width;
+    const minorY = Math.max(leftStep / 2, cell) / 1000 * height;
     const tickGradient = (dir: 'to right' | 'to bottom', period: number) =>
         `repeating-linear-gradient(${dir}, rgba(0, 0, 0, 0.5) 0, rgba(0, 0, 0, 0.5) 1px, transparent 1px, transparent ${period}px)`;
     return (
         <>
-            {/* Left ruler (rendered first, so the top ruler wins the corner) */}
-            <View pointerEvents="none" style={styles.rulerLeft}>
+            {/* Left ruler (rendered first): left of the canvas's left edge,
+                spanning the full canvas height (height passed explicitly —
+                the frame, not an inset, bounds it). */}
+            <View pointerEvents="none" style={[styles.rulerLeft, { height }]}>
                 {minorY >= 3 && (
                     <View
                         style={{
@@ -43,7 +54,7 @@ export const CanvasRulers = ({ width, height, zoom }: {
                         } as any}
                     />
                 )}
-                {positions.map((u) => (
+                {leftPositions.map((u) => (
                     <View key={`lr-${u}`} pointerEvents="none">
                         <View style={[styles.rulerMajorV, { top: (u / 1000) * height }]} />
                         <View
@@ -58,8 +69,9 @@ export const CanvasRulers = ({ width, height, zoom }: {
                 ))}
             </View>
 
-            {/* Top ruler */}
-            <View pointerEvents="none" style={styles.rulerTop}>
+            {/* Top ruler: above the canvas's top edge, spanning the full
+                canvas width (width passed explicitly). */}
+            <View pointerEvents="none" style={[styles.rulerTop, { width }]}>
                 {minorX >= 3 && (
                     <View
                         style={{
@@ -72,7 +84,7 @@ export const CanvasRulers = ({ width, height, zoom }: {
                         } as any}
                     />
                 )}
-                {positions.map((u) => (
+                {topPositions.map((u) => (
                     <View key={`tr-${u}`} pointerEvents="none">
                         <View style={[styles.rulerMajorH, { left: (u / 1000) * width }]} />
                         <View

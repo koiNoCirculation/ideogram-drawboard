@@ -1,9 +1,10 @@
 import { Dispatch, RefObject, SetStateAction, useEffect, useRef, useState } from 'react';
-import { Design, upsertDesign } from '../services/designStore';
+import { clearDesignHandoff, Design, upsertDesign } from '../services/designStore';
 import { normalizePromptForIdeogram } from '../services/IdeogramPrompt';
 import { resolveContradictionInBBox } from '../services/PromptRefiner';
 import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
 import { RefinedPrompt, isEmptyElement } from '../types';
+import { withVisibleElementsOnly } from './canvas';
 
 /**
  * Parse the LLM's rewritten caption, tolerating stray markdown fences or prose
@@ -105,9 +106,11 @@ export function useGeneration(
             return;
         }
         // No empty elements: a text element needs its text, an obj element its
-        // description. They can be filled in via the right-click menu.
+        // description. They can be filled in via the right-click menu. Hidden
+        // elements (layer-list eye off) don't reach the image, so they can't
+        // block a generate; the index is the full-list position (layer-list row).
         const elements = refinedData.compositional_deconstruction.elements;
-        const emptyIndex = elements.findIndex(isEmptyElement);
+        const emptyIndex = elements.findIndex((el) => el.visible !== false && isEmptyElement(el));
         if (emptyIndex !== -1) {
             const empty = elements[emptyIndex];
             const field = empty?.type === 'text' ? 'text' : 'description';
@@ -158,7 +161,9 @@ export function useGeneration(
             // The service expects json_prompt as a plain string field, not a file
             // upload. Normalize first so style_description carries exactly one
             // of photo/art_style, in the key order Ideogram 4.0 expects.
-            formData.append('json_prompt', JSON.stringify(normalizePromptForIdeogram(dataToGenerate)));
+            // Hidden layers are excluded from the image (the visible flag is
+            // DrawBoard UI state, not part of the Ideogram contract).
+            formData.append('json_prompt', JSON.stringify(normalizePromptForIdeogram(withVisibleElementsOnly(dataToGenerate))));
             formData.append('response_type', 'url');
             formData.append('resolution', `${canvasSize.width}x${canvasSize.height}`);
 
@@ -201,6 +206,9 @@ export function useGeneration(
             updatedAt: Date.now(),
         };
         upsertDesign(design);
+        // The stored design is now the source of truth: drop the navigation
+        // handoff so a re-open (by id) can't load the pre-edit payload.
+        clearDesignHandoff(designId);
         setShowSaved(true);
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
         savedTimerRef.current = setTimeout(() => setShowSaved(false), 1800);

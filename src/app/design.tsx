@@ -9,8 +9,9 @@ import { MetadataBar } from './components/design/MetadataBar';
 import { Toolbar } from './components/design/Toolbar';
 import { SettingsDialog } from './components/SettingsDialog';
 import { styles } from './design/designStyles';
-import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, CANVAS_WHEEL_ZOOM_FACTOR, gridCellUnits } from './design/constants';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, CANVAS_WHEEL_ZOOM_FACTOR, gridCellUnits, RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from './design/constants';
 import { snapToGridValue } from './design/canvas';
+import { getDesign, getDesignHandoff, newDesignId } from './services/designStore';
 import { useHistory } from './design/useHistory';
 import { useCanvasInteraction } from './design/useCanvasInteraction';
 import type { ElementTool } from './design/useCanvasInteraction';
@@ -22,11 +23,10 @@ export default function DesignScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
 
-    // Stable id for this design: passed in when re-opening a saved design,
-    // otherwise freshly generated so repeated "Save"s upsert the same record.
-    const [designId] = useState<string>(() =>
-        params.id ? (params.id as string) : `design-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-    );
+    // Stable id for this design: passed in by the home page (freshly
+    // generated for new designs, reused when re-opening a saved one) so
+    // repeated "Save"s upsert the same record.
+    const [designId] = useState<string>(() => (params.id as string) || newDesignId());
 
     const [title, setTitle] = useState('Untitled Design');
     const [aesthetics, setAesthetics] = useState("");
@@ -59,8 +59,13 @@ export default function DesignScreen() {
 
     // Scale the requested canvas size to fit the available area, preserving aspect ratio,
     // then apply the wheel zoom (canvas + elements only; the outer UI is unscaled).
+    // The area also has to fit the ruler strips extending outward from the
+    // canvas (RULER_LEFT_WIDTH on the left, RULER_TOP_HEIGHT on top).
     const scale = canvasSize.width > 0 && canvasSize.height > 0 && canvasAreaSize.width > 0
-        ? Math.min(canvasAreaSize.width / canvasSize.width, canvasAreaSize.height / canvasSize.height)
+        ? Math.min(
+            Math.max(canvasAreaSize.width - RULER_LEFT_WIDTH, 0) / canvasSize.width,
+            Math.max(canvasAreaSize.height - RULER_TOP_HEIGHT, 0) / canvasSize.height,
+        )
         : 0;
     const displaySize = {
         width: canvasSize.width * scale * canvasZoom,
@@ -89,10 +94,19 @@ export default function DesignScreen() {
     // Image generation + saving + the generated-image history.
     const generation = useGeneration(refinedData, setRefinedData, canvasSize, designId, bboxEditedRef);
 
+    // Load the design by id: a just-started design's prompt lives in the
+    // localStorage handoff (too large for URL query params — HTTP 431); a
+    // re-opened design lives in the design store under the same id. The
+    // handoff only exists until the first Save, so it never shadows stored
+    // edits. With no id / no data (bare /design visit) the placeholder stays.
     useEffect(() => {
+        const id = params.id as string | undefined;
+        const handoff = id ? getDesignHandoff(id) : undefined;
+        const stored = id && !handoff ? getDesign(id) : undefined;
+        const promptData = handoff?.promptData ?? (stored ? JSON.stringify(stored.prompt) : null);
+        if (!promptData) return;
         try {
-            const parsed = JSON.parse(params.promptData as string);
-            console.log(parsed)
+            const parsed = JSON.parse(promptData);
             setRefinedData(parsed);
             // A freshly loaded caption's descs match its bboxes: no rewrite
             // needed until the user moves or resizes a box.
@@ -116,19 +130,23 @@ export default function DesignScreen() {
                 setPalette(parsed.style_description.color_palette || []);
             }
 
-            const size = (params.size as string).split(",");
-            setCanvasSize({ width: Number.parseInt(size[0]), height: Number.parseInt(size[1]) });
+            const size = handoff
+                ? handoff.size
+                : stored?.size;
+            if (size) {
+                setCanvasSize({ width: size.width, height: size.height });
+            }
 
             // When re-opening a saved design, restore its generated image
             // history and show the latest one on the canvas.
-            if (params.images) {
-                generation.restoreImages(JSON.parse(params.images as string));
+            if (stored) {
+                generation.restoreImages(stored.images);
             }
         } catch (e) {
             console.error('Failed to parse promptData', e);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [params.promptData, params.size, params.images]);
+    }, [params.id]);
 
     // Mouse wheel over the canvas area zooms the canvas (web). A native
     // non-passive listener so preventDefault stops the container scrolling at
@@ -156,8 +174,14 @@ export default function DesignScreen() {
         const node = document.querySelector('[data-testid="canvas-sizer"]') as HTMLElement | null;
         if (!node) return;
         const id = requestAnimationFrame(() => {
-            node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2;
-            node.scrollTop = (node.scrollHeight - node.clientHeight) / 2;
+            // The scrollable content is the canvas frame (canvas + outward
+            // rulers), which extends RULER_LEFT_WIDTH / RULER_TOP_HEIGHT past
+            // the canvas's left/top but not its right/bottom — so centering
+            // the frame leaves the canvas center half a ruler off; add the
+            // correction (on any axis that still fits the expression is
+            // negative and clamps to 0, where auto margins already center).
+            node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2 + RULER_LEFT_WIDTH / 2;
+            node.scrollTop = (node.scrollHeight - node.clientHeight) / 2 + RULER_TOP_HEIGHT / 2;
         });
         return () => cancelAnimationFrame(id);
     }, [canvasZoom]);
@@ -181,6 +205,30 @@ export default function DesignScreen() {
     const toggleTool = (tool: ElementTool) => {
         setActiveTool(activeTool === tool ? null : tool);
         setHoveredIndex(null);
+    };
+
+    // Layer-list eye toggle: hide/show one element. Hiding stores
+    // visible:false (the box disappears from the canvas and the element is
+    // excluded from generation); showing removes the key again (absent =
+    // visible). One undo step per toggle, like the other element edits.
+    const handleToggleVisible = (index: number) => {
+        history.recordAction();
+        setRefinedData((prev) => prev
+            ? {
+                ...prev,
+                compositional_deconstruction: {
+                    ...prev.compositional_deconstruction,
+                    elements: prev.compositional_deconstruction.elements.map((el, i) => {
+                        if (i !== index) return el;
+                        if (el.visible === false) {
+                            const { visible: _v, ...rest } = el;
+                            return rest;
+                        }
+                        return { ...el, visible: false };
+                    }),
+                },
+            }
+            : prev);
     };
 
     // Palette edits update the display state and write back into the prompt,
@@ -253,6 +301,7 @@ export default function DesignScreen() {
                         displaySize={displaySize}
                         activeTool={activeTool}
                         onCanvasPointerDown={interaction.handleCanvasPointerDown}
+                        onToggleVisible={handleToggleVisible}
                         onSizerLayout={(e: any) => setCanvasAreaSize({
                             width: e.nativeEvent.layout.width,
                             height: e.nativeEvent.layout.height,

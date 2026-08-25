@@ -1,13 +1,14 @@
 import { Check } from 'lucide-react-native';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
-import { gridCellUnits } from '../../design/constants';
+import { gridCellUnits, RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from '../../design/constants';
 import { bboxToGeometry, AlignGuides } from '../../design/canvas';
 import type { ElementTool } from '../../design/useCanvasInteraction';
 import { CanvasElement, isEmptyElement } from '../../types';
 import { ElementBox } from '../ElementBox';
 import type { Corner } from '../ElementBox';
 import { CanvasRulers } from './CanvasRulers';
+import { LayerList } from './LayerList';
 import { HistoryStrip } from './HistoryStrip';
 import { GenerateRow } from './GenerateRow';
 
@@ -28,6 +29,7 @@ export const CanvasStage = ({
     activeTool,
     onCanvasPointerDown,
     onSizerLayout,
+    onToggleVisible,
     shownImage,
     elements,
     hoveredIndex,
@@ -63,6 +65,7 @@ export const CanvasStage = ({
     activeTool: ElementTool | null;
     onCanvasPointerDown: (e: any) => void;
     onSizerLayout: (e: any) => void;
+    onToggleVisible: (index: number) => void;
     shownImage: string | null;
     elements: CanvasElement[];
     hoveredIndex: number | null;
@@ -130,13 +133,33 @@ export const CanvasStage = ({
             ]}
             onLayout={onSizerLayout}
         >
+            {/* Canvas frame: the canvas plus the ruler strips extending
+                OUTWARD above its top edge and left of its left edge (so the
+                semi-transparent rulers never occlude canvas content). The
+                frame — not the canvas — is what gets centered (auto margins)
+                and scrolled in the sizer, so the rulers move with the canvas. */}
             <View
-                style={[
-                    styles.canvas,
-                    // Auto margins center the canvas on any axis that still
+                style={{
+                    position: 'relative',
+                    width: displaySize.width + RULER_LEFT_WIDTH,
+                    height: displaySize.height + RULER_TOP_HEIGHT,
+                    // Auto margins center the frame on any axis that still
                     // fits while zoomed (and collapse to 0 on overflowing
                     // axes, keeping the whole canvas scrollable).
-                    { width: displaySize.width, height: displaySize.height, margin: 'auto' },
+                    margin: 'auto',
+                }}
+            >
+            <View
+                testID="design-canvas"
+                style={[
+                    styles.canvas,
+                    {
+                        position: 'absolute',
+                        top: RULER_TOP_HEIGHT,
+                        left: RULER_LEFT_WIDTH,
+                        width: displaySize.width,
+                        height: displaySize.height,
+                    },
                     // Web: crosshair while a creation tool is armed.
                     (activeTool ? { cursor: 'crosshair' } : {}) as any,
                 ]}
@@ -184,7 +207,9 @@ export const CanvasStage = ({
                             pointerEvents={activeTool ? 'none' : undefined}
                         >
                             {elements.map((element, index) => {
-                                if (!element.bbox) return null;
+                                // Hidden via the layer list's eye toggle: no
+                                // box (data untouched — re-showing restores it).
+                                if (!element.bbox || element.visible === false) return null;
                                 const geo = bboxToGeometry(element.bbox, displaySize);
                                 return (
                                     <ElementBox
@@ -292,13 +317,19 @@ export const CanvasStage = ({
                     />
                 )}
 
-                {/* Rulers on the top/left edges (0-1000 on both axes);
-                    they scale with the canvas and line up with the grid. */}
-                {displaySize.width > 0 && (
-                    <CanvasRulers width={displaySize.width} height={displaySize.height} zoom={canvasZoom} />
-                )}
+            </View>
+
+            {/* Rulers on the top/left edges (0-1000 on both axes);
+                they scale with the canvas and line up with the grid. */}
+            {displaySize.width > 0 && (
+                <CanvasRulers width={displaySize.width} height={displaySize.height} zoom={canvasZoom} />
+            )}
             </View>
         </View>
+
+        {/* Layer list (Photoshop-style): eye toggle + type icon + label per
+            element, docked at the canvas area's bottom-right corner. */}
+        <LayerList elements={elements} onToggleVisible={onToggleVisible} />
 
         {/* Creation tool hint */}
         {activeTool && (

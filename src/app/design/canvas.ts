@@ -1,4 +1,4 @@
-import { CanvasElement } from '../types';
+import { CanvasElement, RefinedPrompt } from '../types';
 
 /** Snap a 0-1000 coordinate to a grid of `cell` units, clamped to [0, 1000]. */
 export const snapToGridValue = (v: number, cell: number): number =>
@@ -26,6 +26,25 @@ export const bboxToGeometry = (
         top: (yMin / 1000) * displaySize.height,
         width: ((xMax - xMin) / 1000) * displaySize.width,
         height: ((yMax - yMin) / 1000) * displaySize.height,
+    };
+};
+
+/**
+ * The prompt as sent to image generation: elements hidden via the layer
+ * list's eye toggle (visible === false) are dropped, and the `visible` key
+ * (a DrawBoard UI concern, not part of the Ideogram contract) is stripped
+ * from the rest. Returns the input unchanged when nothing is hidden.
+ */
+export const withVisibleElementsOnly = (data: RefinedPrompt): RefinedPrompt => {
+    const elements = data.compositional_deconstruction.elements;
+    const visible = elements.filter((el) => el.visible !== false);
+    if (visible.length === elements.length) return data;
+    return {
+        ...data,
+        compositional_deconstruction: {
+            ...data.compositional_deconstruction,
+            elements: visible.map(({ visible: _v, ...rest }) => rest),
+        },
     };
 };
 
