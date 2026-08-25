@@ -115,7 +115,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
    - 选非 custom 比例时：以 1024 为基准算出默认 W/H；随后在 W 或 H 输入数字，另一边按比例自动联动（取整）。
    - 选 custom 后 W/H 互不联动，长宽比取 `${W}:${H}`。
 3. 多行 prompt 输入框（占位符 "a golden retriever on a skateboard"），占满剩余空间。
-4. 「开始设计」按钮：prompt 非空且 LLM 设置项齐全（缺失则 Alert 列出缺项并停止）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。失败弹 Alert。
+4. 「开始设计」按钮：prompt 非空且 LLM 设置项齐全（缺失则 Alert 列出缺项并停止）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串。**JSON 格式校验 + 重试**：LLM（temperature 1.0）可能返回无法 `JSON.parse` 的回答，每次尝试后立即解析，失败时在按钮上方显示临时错误条（**5 秒后自动消失**，新的失败重新计时）并重试，最多 `REFINE_MAX_ATTEMPTS = 3` 次，全部失败弹 Alert 不跳转。校验通过 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。其他失败（网络等）弹 Alert。
 5. 页面右上角齿轮按钮（绝对定位）：打开设置对话框。
 
 ## design.tsx（设计页）

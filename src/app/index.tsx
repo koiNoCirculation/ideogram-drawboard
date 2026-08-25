@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Image,
@@ -19,6 +19,10 @@ import { getMissingSettings, loadSettings } from './services/settings';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
 
+// The LLM (temperature 1.0) occasionally answers with malformed JSON; how many
+// refine attempts are made before giving up with an Alert.
+const REFINE_MAX_ATTEMPTS = 3;
+
 export default function IndexScreen() {
     const router = useRouter();
 
@@ -32,9 +36,20 @@ export default function IndexScreen() {
     const [designs, setDesigns] = useState<Design[]>([]);
     // Settings dialog (opened from the gear icon, top-right of the page).
     const [showSettings, setShowSettings] = useState(false);
+    // Transient "invalid JSON, retrying" message (auto-dismisses after 5s).
+    const [refineError, setRefineError] = useState<string | null>(null);
+    const refineErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Show the transient refine error; a fresh failure restarts the 5s timer.
+    const showRefineError = (message: string) => {
+        setRefineError(message);
+        if (refineErrorTimer.current) clearTimeout(refineErrorTimer.current);
+        refineErrorTimer.current = setTimeout(() => setRefineError(null), 5000);
+    };
 
     useEffect(() => {
         setDesigns(loadDesigns());
+        return () => { if (refineErrorTimer.current) clearTimeout(refineErrorTimer.current); };
     }, []);
 
     // Re-open a saved design: the full payload lives in the design store, so
@@ -100,7 +115,7 @@ export default function IndexScreen() {
         setIsLoading(true);
         try {
             const ratioString = selectedRatio === 'custom' ? `${width}:${height}` : selectedRatio;
-            const refinedPrompt = await refine(await loadSystemPrompt(), prompt, ratioString);
+            const refinedPrompt = await refineWithRetry(await loadSystemPrompt(), ratioString);
 
             // The refined prompt is too large for URL query params (HTTP 431):
             // stash it as a handoff keyed by a fresh design id and navigate
@@ -116,6 +131,29 @@ export default function IndexScreen() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Refine the prompt. The LLM can answer with malformed JSON (temperature
+    // 1.0): parse each attempt, and on failure show a transient error and
+    // retry, giving up with an error after REFINE_MAX_ATTEMPTS.
+    const refineWithRetry = async (systemPrompt: string, ratioString: string): Promise<string> => {
+        for (let attempt = 1; attempt <= REFINE_MAX_ATTEMPTS; attempt++) {
+            const raw = await refine(systemPrompt, prompt, ratioString);
+            try {
+                JSON.parse(raw);
+                return raw;
+            } catch {
+                showRefineError(
+                    attempt < REFINE_MAX_ATTEMPTS
+                        ? `The LLM returned invalid JSON — retrying (${attempt + 1} of ${REFINE_MAX_ATTEMPTS})…`
+                        : 'The LLM returned invalid JSON on every attempt.',
+                );
+                if (attempt === REFINE_MAX_ATTEMPTS) {
+                    throw new Error('The LLM returned invalid JSON on every attempt. Please try again.');
+                }
+            }
+        }
+        throw new Error('Refine failed.'); // unreachable: the loop returns or throws
     };
 
     async function loadSystemPrompt(): Promise<string> {
@@ -230,6 +268,13 @@ export default function IndexScreen() {
                             onChangeText={setPrompt}
                         />
                     </View>
+
+                    {/* Transient refine error (invalid JSON → retrying); auto-dismisses after 5s */}
+                    {refineError && (
+                        <View style={styles.refineErrorRow}>
+                            <Text style={styles.refineErrorText}>{refineError}</Text>
+                        </View>
+                    )}
 
                     {/* Start Button */}
                     <TouchableOpacity
@@ -379,6 +424,19 @@ const styles = StyleSheet.create({
         padding: 16,
         fontSize: 18,
         textAlignVertical: 'top',
+    },
+    // Transient refine error (invalid JSON, retrying) above the start button.
+    refineErrorRow: {
+        marginBottom: 12,
+        padding: 10,
+        borderRadius: 8,
+        backgroundColor: 'rgba(229, 57, 53, 0.08)',
+        borderWidth: 1,
+        borderColor: '#E53935',
+    },
+    refineErrorText: {
+        fontSize: 13,
+        color: '#E53935',
     },
     button: {
         backgroundColor: '#007AFF',
