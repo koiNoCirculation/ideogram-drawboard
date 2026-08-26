@@ -1,5 +1,6 @@
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
+import { useI18n } from '../../../i18n';
 
 /**
  * Horizontal strip of generated-image thumbnails. Clicking a thumbnail views
@@ -14,10 +15,11 @@ export const HistoryStrip = ({
     shownIndex: number;
     onView: (index: number) => void;
 }) => {
+    const { t } = useI18n();
     if (images.length === 0) return null;
     return (
         <View style={styles.historyStrip}>
-            <Text style={styles.historyLabel}>Generated ({images.length})</Text>
+            <Text style={styles.historyLabel}>{`${t('generated')} (${images.length})`}</Text>
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}

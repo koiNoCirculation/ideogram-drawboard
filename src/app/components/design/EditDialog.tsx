@@ -3,6 +3,7 @@ import { Dispatch, SetStateAction } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
 import { FONT_CHOICES, FONT_SIZE_PRESETS } from '../../design/constants';
+import { useI18n } from '../../../i18n';
 import type { FontOpt } from '../../design/useElementEditing';
 import { CanvasElement } from '../../types';
 import { SelectField } from '../SettingsDialog';
@@ -35,12 +36,13 @@ export const EditDialog = ({
     onSave: () => void;
     onClose: () => void;
 }) => {
+    const { t } = useI18n();
     if (!element) return null;
     const isDesc = editing.field === 'desc';
     return (
         <View style={styles.dialogBackdrop} onPointerDown={onClose}>
             <View style={styles.dialogCard} onPointerDown={(e) => e.stopPropagation()}>
-                <Text style={styles.dialogTitle}>{isDesc ? 'Edit description' : 'Edit text'}</Text>
+                <Text style={styles.dialogTitle}>{isDesc ? t('editDescription') : t('editText')}</Text>
                 <TextInput
                     style={styles.dialogInput}
                     value={draft}
@@ -56,7 +58,7 @@ export const EditDialog = ({
                 {!isDesc && (
                     <View style={styles.fontOptions}>
                         <View style={styles.fontField}>
-                            <Text style={styles.fontLabel}>Font size (px)</Text>
+                            <Text style={styles.fontLabel}>{t('fontSize')}</Text>
                             <View style={styles.sizeCombo}>
                                 <TextInput
                                     testID="font-size-input"
@@ -98,10 +100,10 @@ export const EditDialog = ({
                         </View>
                         <SelectField
                             id="font-choice"
-                            label="Font"
-                            value={fontOpt.font === '' ? 'Default' : fontOpt.font}
-                            options={['Default', ...FONT_CHOICES]}
-                            onChange={(v) => onFontOptChange((p) => ({ ...p, font: v === 'Default' ? '' : v }))}
+                            label={t('font')}
+                            value={fontOpt.font === '' ? t('fontDefault') : fontOpt.font}
+                            options={[t('fontDefault'), ...FONT_CHOICES]}
+                            onChange={(v) => onFontOptChange((p) => ({ ...p, font: v === t('fontDefault') ? '' : v }))}
                         />
                         <View style={styles.fontToggles}>
                             <TouchableOpacity
@@ -124,14 +126,14 @@ export const EditDialog = ({
 
                 <View style={styles.dialogActions}>
                     <TouchableOpacity style={styles.dialogCancelButton} onPress={onClose}>
-                        <Text style={styles.dialogCancelText}>Cancel</Text>
+                        <Text style={styles.dialogCancelText}>{t('cancel')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.dialogSaveButton, !draft.trim() && styles.dialogButtonDisabled]}
                         onPress={onSave}
                         disabled={!draft.trim()}
                     >
-                        <Text style={styles.dialogSaveText}>Save</Text>
+                        <Text style={styles.dialogSaveText}>{t('save')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>

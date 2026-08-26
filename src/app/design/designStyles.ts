@@ -48,6 +48,10 @@ export const styles = StyleSheet.create({
         color: '#333',
         textAlign: 'center',
     },
+    // Language flag in the header, left of the settings gear.
+    langButton: {
+        marginLeft: 8,
+    },
     // Settings gear in the header's top-right corner (matches toolbar icon size).
     settingsButton: {
         padding: 10,

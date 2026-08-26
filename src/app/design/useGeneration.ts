@@ -6,28 +6,33 @@ import { downloadImage } from '../services/imageDownload';
 import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
 import { RefinedPrompt, isEmptyElement } from '../types';
 import { withVisibleElementsOnly } from './canvas';
+import { TranslationKey, useI18n } from '../../i18n';
+
+// The UI-language lookup, so module-level helpers can surface translated
+// error messages (they run from the hook, which is inside the provider).
+type T = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
 /**
  * Parse the LLM's rewritten caption, tolerating stray markdown fences or prose
  * around the JSON object (the prompt asks for bare JSON, but be defensive).
  * Throws if the response is not a usable caption.
  */
-function parseRewrittenCaption(content: string): RefinedPrompt {
+function parseRewrittenCaption(content: string, t: T): RefinedPrompt {
     const trimmed = content.trim();
     const start = trimmed.indexOf('{');
     const end = trimmed.lastIndexOf('}');
     if (start === -1 || end <= start) {
-        throw new Error('The bbox-rewrite model did not return a JSON caption.');
+        throw new Error(t('rewriteNoJson'));
     }
     const parsed: any = JSON.parse(trimmed.slice(start, end + 1));
     if (!Array.isArray(parsed?.compositional_deconstruction?.elements)) {
-        throw new Error('The rewritten caption is missing compositional_deconstruction.elements.');
+        throw new Error(t('rewriteMissingElements'));
     }
     return parsed as RefinedPrompt;
 }
 
 // Load the bbox-rewrite system prompt from the public assets directory.
-async function loadRewriteSystemPrompt(): Promise<string> {
+async function loadRewriteSystemPrompt(t: T): Promise<string> {
     try {
         const response = await fetch('/system_prompt_rewrite_adapt_bbox.txt');
         if (!response.ok) {
@@ -36,7 +41,7 @@ async function loadRewriteSystemPrompt(): Promise<string> {
         return await response.text();
     } catch (error) {
         console.error('[loadRewriteSystemPrompt Error]:', error);
-        throw new Error('Could not load the bbox-rewrite system prompt. Please ensure assets are correctly bundled.');
+        throw new Error(t('rewritePromptLoadFailed'));
     }
 }
 
@@ -53,6 +58,7 @@ export function useGeneration(
     designId: string,
     bboxEditedRef: RefObject<boolean>,
 ) {
+    const { t } = useI18n();
     // All generated image URLs, in generation order.
     const [images, setImages] = useState<string[]>([]);
     // Which generated image is currently shown on the canvas.
@@ -110,7 +116,7 @@ export function useGeneration(
         const settings = loadSettings();
         const missing = getMissingSettings(settings);
         if (missing.length > 0) {
-            setGenerateError(`Cannot generate — missing settings: ${missing.join(', ')}. Open Settings (gear icon) to configure them.`);
+            setGenerateError(t('genMissingSettings', { items: missing.join(', ') }));
             return;
         }
         // No empty elements: a text element needs its text, an obj element its
@@ -121,8 +127,8 @@ export function useGeneration(
         const emptyIndex = elements.findIndex((el) => el.visible !== false && isEmptyElement(el));
         if (emptyIndex !== -1) {
             const empty = elements[emptyIndex];
-            const field = empty?.type === 'text' ? 'text' : 'description';
-            setGenerateError(`Element ${emptyIndex + 1} is empty — right-click it on the canvas to edit its ${field}.`);
+            const field = empty?.type === 'text' ? t('fieldText') : t('fieldDescription');
+            setGenerateError(t('genEmptyElement', { n: emptyIndex + 1, field }));
             // Point the user at the offending box(es) on the canvas.
             setShowEmptyHighlight(true);
             startFlash();
@@ -137,9 +143,10 @@ export function useGeneration(
             if (bboxEditedRef.current) {
                 // Resolve the contradiction between each element's desc and its
                 // bbox (which the user moved or resized on the canvas).
-                const systemPrompt = await loadRewriteSystemPrompt();
+                const systemPrompt = await loadRewriteSystemPrompt(t);
                 const rewritten = parseRewrittenCaption(
                     await resolveContradictionInBBox(systemPrompt, JSON.stringify(refinedData)),
+                    t,
                 );
 
                 // The model is instructed to keep every field except desc, but
@@ -185,18 +192,18 @@ export function useGeneration(
                 body: formData,
             });
             if (!response.ok) {
-                throw new Error(`Request failed with status ${response.status}`);
+                throw new Error(t('requestFailedStatus', { status: response.status }));
             }
             const result = await response.json();
             const url: string | undefined = result?.data?.[0]?.url;
             if (!url) {
-                throw new Error('No image URL in response');
+                throw new Error(t('noImageUrl'));
             }
             // Append to the history and switch the canvas to the new latest image.
             setImages((prev) => [...prev, url]);
             setViewIndex(images.length);
         } catch (error: any) {
-            setGenerateError(error?.message ?? 'Generation failed');
+            setGenerateError(error?.message ?? t('generationFailed'));
         } finally {
             setIsGenerating(false);
         }
@@ -239,7 +246,7 @@ export function useGeneration(
     const handleDownload = async () => {
         if (isDownloading) return;
         if (!shownImage) {
-            showDownloadError('No image has been generated yet — generate one first, then download.');
+            showDownloadError(t('noImageYet'));
             return;
         }
         setIsDownloading(true);
@@ -247,7 +254,7 @@ export function useGeneration(
         try {
             await downloadImage(shownImage, `${designId}.png`);
         } catch (error: any) {
-            showDownloadError(error?.message ?? 'Download failed');
+            showDownloadError(error?.message ?? t('downloadFailed'));
         } finally {
             setIsDownloading(false);
         }

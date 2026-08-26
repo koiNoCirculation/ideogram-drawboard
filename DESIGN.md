@@ -8,43 +8,52 @@ DrawBoard 是一个「自然语言 → 结构化图片提示词 → 画布编辑
 ## 文件结构
 
 ```
-src/app/
-  _layout.tsx            根布局（expo-router Stack）
-  index.tsx              首页：输入描述、选比例/尺寸，最近设计列表
-  design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
-  types.ts               RefinedPrompt / CanvasElement / isEmptyElement
-  design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
-    constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
-    canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides / withVisibleElementsOnly（生成前剔除隐藏元素）
-    designStyles.ts      设计页全部 StyleSheet（不计入行数约束）
-    useHistory.ts        快照式撤销/重做（begin/commit/cancel/recordAction/undo/redo/reset）
-    useCanvasInteraction.ts  画布拖动/缩放（中心对齐辅助线）+ 拖拽创建元素
-    useElementEditing.ts     右键菜单（复制/粘贴/编辑/删除）+ desc/text 编辑对话框（含字体选项）
-    useGeneration.ts     生成（设置校验→空元素校验→按需改写 desc→规范化→请求）、保存、图片历史
-  components/
-    ElementBox.tsx       画布上的单个元素框（拖动、四角缩放、右键菜单载体）
-    ColorPalette.tsx     调色板（色块 + 添加按钮 + 弹出编辑 popover，portal 到 body）
-    ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
-    SettingsDialog.tsx   设置对话框（两个下拉 + 五个文本框，内联展开式下拉）
-    design/              设计页展示组件（props 驱动，无自身状态）
-      CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形 + 标尺 + 图层列表）、历史条与保存/生成行
-      CanvasRulers.tsx   画布上/左边缘标尺（0–1000 双轴，向外延伸、随画布缩放、与网格对齐，数字密度按档位）
-      LayerList.tsx      图层列表（画布区右下角：眼睛显隐开关 + 类型图标 + 30 字截断标签，最多 8 行）
-      Toolbar.tsx        左侧工具栏（添加文字/对象 + 撤销/重做）
-      MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
-      HistoryStrip.tsx   生成图缩略图横条
-      GenerateRow.tsx    Save + Generate + Download Image 按钮行（保存成功提示、错误行）
-      ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
-      HeaderBackButton.tsx  Stack 页头返回按钮（design 标题左侧，headerLeft 注入；刷新后仍可用，见「页面与导航」节）
-      EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
-  services/
-    PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
-    IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
-    imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
-    settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
-    designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ 返回首页导航标志 + newDesignId
-    color.ts             hex/RGB/HSV 互转与 clamp 工具
-  test/services/         jest 单测（PromptRefiner、IdeogramPrompt、settings）
+src/
+  i18n/                  界面国际化（en-US / zh-CN，见「i18n」节）
+    translations.ts      双语词表（enUS 基准 + zhCN 同 key 强制对齐）、Locale/LOCALES/默认 locale/存储 key/国旗 emoji
+    I18nContext.tsx      I18nProvider + useI18n() + t(key, vars)（{name} 占位替换）、loadLocale/persistLocale
+    index.ts             统一导出
+  app/
+    _layout.tsx            根布局（expo-router Stack，外层包 I18nProvider）
+    index.tsx              首页：输入描述、选比例/尺寸，最近设计列表
+    design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
+    types.ts               RefinedPrompt / CanvasElement / isEmptyElement
+    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff→跳转；瞬态错误行）
+    design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
+      constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
+      canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides / withVisibleElementsOnly（生成前剔除隐藏元素）
+      designStyles.ts      设计页全部 StyleSheet（不计入行数约束）
+      useHistory.ts        快照式撤销/重做（begin/commit/cancel/recordAction/undo/redo/reset）
+      useCanvasInteraction.ts  画布拖动/缩放（中心对齐辅助线）+ 拖拽创建元素
+      useElementEditing.ts     右键菜单（复制/粘贴/编辑/删除）+ desc/text 编辑对话框（含字体选项）
+      useGeneration.ts     生成（设置校验→空元素校验→按需改写 desc→规范化→请求）、保存、图片历史
+    components/
+      ElementBox.tsx       画布上的单个元素框（拖动、四角缩放、右键菜单载体）
+      ColorPalette.tsx     调色板（色块 + 添加按钮 + 弹出编辑 popover，portal 到 body）
+      ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
+      SettingsDialog.tsx   设置对话框（两个下拉 + 五个文本框，内联展开式下拉）
+      LanguageSwitcher.tsx 界面语言切换器（国旗 emoji 按钮 + 下拉菜单，portal 到 body，见「i18n」节）
+      design/              设计页展示组件（props 驱动，无自身状态）
+        CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形 + 标尺 + 图层列表）、历史条与保存/生成行
+        CanvasRulers.tsx   画布上/左边缘标尺（0–1000 双轴，向外延伸、随画布缩放、与网格对齐，数字密度按档位）
+        LayerList.tsx      图层列表（画布区右下角：眼睛显隐开关 + 类型图标 + 30 字截断标签，最多 8 行）
+        Toolbar.tsx        左侧工具栏（添加文字/对象 + 撤销/重做）
+        MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
+        HistoryStrip.tsx   生成图缩略图横条
+        GenerateRow.tsx    Save + Generate + Download Image 按钮行（保存成功提示、错误行）
+        ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
+        HeaderBackButton.tsx  Stack 页头返回按钮（design 标题左侧，headerLeft 注入；刷新后仍可用，见「页面与导航」节）
+        EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
+    services/
+      PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
+      IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
+      imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
+      settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
+      designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ 返回首页导航标志 + newDesignId
+      color.ts             hex/RGB/HSV 互转与 clamp 工具
+    test/
+      services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload）
+      i18n/                jest 单测（locale 加载/持久化、双语映射、占位替换、key 对齐）
 public/
   system_prompt.txt                       生成 JSON prompt 的 LLM 系统提示词（完整契约）
   system_prompt_rewrite_adapt_bbox.txt    bbox 改写 LLM 的系统提示词（只修 desc 与 bbox 矛盾）
@@ -97,6 +106,15 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 设计页点 **Generate**：任何一项缺失 → 拒绝生成，错误行显示 "Cannot generate — missing settings: …"，不发起任何请求。
 - 首页点 **开始设计**：LLM 相关项缺失 → Alert 提示，不发起 LLM 请求。
 
+## i18n（界面国际化 en-US / zh-CN）
+
+除**数据与元素展示**外，全部界面文案走 i18n。数据（永不翻译）：元素 `desc`/`text`、生成图 caption、长宽比数值、字体名、LLM 厂商/模型名、设置端点，以及输入框占位示例 "a golden retriever on a skateboard"。
+
+- **`src/i18n/`**：`translations.ts` 双语词表——`enUS` 为基准（~60 个 key），`zhCN` 类型是 `Record<keyof typeof enUS, string>`，编译期强制 key 对齐、不许缺值；另导出 `Locale`（`'en-US' | 'zh-CN'`）、`LOCALES`、`DEFAULT_LOCALE = 'en-US'`、`LOCALE_STORAGE_KEY = 'drawboard.locale'`、`LOCALE_FLAGS`（🇺🇸 / 🇨🇳）。`I18nContext.tsx`：`I18nProvider`（根布局 `_layout.tsx` 包裹 Stack）+ `useI18n()`（`locale` / `setLocale` / `t`）；`t(key, vars?)` 做 `{name}` 占位替换，未知 key 原样透传（不崩）。
+- **locale 持久化**：选择写 `localStorage['drawboard.locale']`，刷新/重开保持；`loadLocale` 读非法值（或无存储）回退 `en-US`。
+- **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗 emoji 按钮（testID `lang-switcher`），点击开下拉（两个选项，testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
+- **覆盖**：首页（侧栏标题/占位、输入区标题、W/H/自定义、开始设计/处理中、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、调色盘 popover、设置对话框全部标签）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
+
 ## 页面与导航
 
 `index.tsx`（默认页）⇄ `design.tsx`。**导航只在 URL 里带设计 `id`**——LLM 改写后的 prompt 太大，放 query 参数会触发 HTTP 431（请求行过长），所以走 localStorage handoff（见下）。
@@ -106,6 +124,8 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 设计页的返回按钮在 **Stack 页头**（"design" 标题左侧），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
 
 ## index.tsx（首页）
+
+页面文件只做状态声明与组合；「开始设计」流程（设置校验 → refine 重试 → handoff → 跳转 + 瞬态错误行）在 `useStartDesign.ts`（同设计页 hooks 的拆分模式，index.tsx 因此保持 <400 行）。
 
 左右两栏（1/3 + 2/3）：
 
@@ -118,7 +138,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
    - 选 custom 后 W/H 互不联动，长宽比取 `${W}:${H}`。
 3. 多行 prompt 输入框（占位符 "a golden retriever on a skateboard"），占满剩余空间。
 4. 「开始设计」按钮：prompt 非空且 LLM 设置项齐全（缺失则 Alert 列出缺项并停止）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串。**JSON 格式校验 + 重试**：LLM（temperature 1.0）可能返回无法 `JSON.parse` 的回答，每次尝试后立即解析，失败时在按钮上方显示临时错误条（**5 秒后自动消失**，新的失败重新计时）并重试，最多 `REFINE_MAX_ATTEMPTS = 3` 次，全部失败弹 Alert 不跳转。校验通过 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。其他失败（网络等）弹 Alert。
-5. 页面右上角齿轮按钮（绝对定位）：打开设置对话框。
+5. 页面右上角齿轮按钮（绝对定位）：打开设置对话框；齿轮左侧紧邻 `LanguageSwitcher` 语言切换器（见「i18n」节）。
 
 ## design.tsx（设计页）
 
@@ -127,7 +147,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 ### 初始化
 - `designId`：首页导航恒带 `id`（新设计由首页生成、重开设计复用原 id）；裸访问 /design 无 id 时现场生成（无数据，显示占位）。
 - 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；store 里的 `images` → 图片历史，`viewIndex` 指向最新一张。
-- 页头：可编辑标题 + 右侧设置齿轮按钮（打开设置对话框，见「设置」节）。返回按钮在 Stack 页头"design" 标题左侧（见「页面与导航」节）。
+- 页头：可编辑标题 + 右侧 `LanguageSwitcher`（见「i18n」节）+ 设置齿轮按钮（打开设置对话框，见「设置」节）。返回按钮在 Stack 页头"design" 标题左侧（见「页面与导航」节）。
 
 ### 元数据栏（六个部分，各 ≤20% 宽度，内部换行）
 一行六个部分：Aesthetics / Lighting / Art Style / Photo / Medium / Palette。
@@ -261,4 +281,5 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
 - `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）。
 - `imageDownload.spec.ts`：纯函数单测（stub fetch/document/URL object-URL）——成功时以正确文件名经 `<a download>` 点击触发下载；fetch 失败时抛错且不动 DOM。
-- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）
+- `i18n.spec.ts`：纯函数单测（内存 storage 挂到 `window.localStorage`）——默认 en-US、合法/非法存储值回退、`persistLocale` 写回、题目要求的全部英中映射、`{n}`/`{items}` 占位替换、未知 key 透传、双语表 key 对齐且无空值。
+- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。

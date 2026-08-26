@@ -14,6 +14,7 @@ import {
     loadSettings,
     saveSettings,
 } from '../services/settings';
+import { useI18n } from '../../i18n';
 
 /**
  * A labeled dropdown. RN has no native select, so the options render as an
@@ -98,6 +99,7 @@ function TextField({ label, value, onChange, placeholder, editable = true }: {
  * where the official endpoint is shown read-only instead.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
+    const { t } = useI18n();
     const [settings, setSettings] = useState<Settings>(() => loadSettings());
     const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
         setSettings((prev) => ({ ...prev, [key]: value }));
@@ -126,17 +128,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <View style={styles.backdrop} onPointerDown={onClose}>
             <View style={styles.card} onPointerDown={(e) => e.stopPropagation()}>
                 <View style={styles.titleRow}>
-                    <Text style={styles.title}>Settings</Text>
+                    <Text style={styles.title}>{t('settingsTitle')}</Text>
                     <TouchableOpacity onPress={onClose} testID="settings-close" style={{ padding: 4 }}>
                         <X size={18} color="#888" />
                     </TouchableOpacity>
                 </View>
 
                 <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-                    <Text style={styles.sectionTitle}>Large language model</Text>
+                    <Text style={styles.sectionTitle}>{t('llmSection')}</Text>
                     <SelectField
                         id="llm-provider"
-                        label="LLM provider"
+                        label={t('llmProvider')}
                         value={settings.llmProvider}
                         options={LLM_PROVIDERS}
                         onChange={(v) => {
@@ -151,42 +153,42 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                         }}
                     />
                     <TextField
-                        label="LLM endpoint"
+                        label={t('llmEndpoint')}
                         value={isSelfHostedLlmProvider ? activeLlm.endpoint : getLlmUrl(settings)}
                         onChange={(v) => setLlmField('endpoint', v)}
                         placeholder="http://localhost:8000/v1"
                         editable={isSelfHostedLlmProvider}
                     />
                     <TextField
-                        label="LLM secret key"
+                        label={t('llmKey')}
                         value={activeLlm.secretKey}
                         onChange={(v) => setLlmField('secretKey', v)}
                         placeholder="sk-..."
                     />
                     <TextField
-                        label="LLM name"
+                        label={t('llmName')}
                         value={activeLlm.name}
                         onChange={(v) => setLlmField('name', v)}
                         placeholder="gpt-4o"
                     />
 
-                    <Text style={styles.sectionTitle}>Image generation</Text>
+                    <Text style={styles.sectionTitle}>{t('imageSection')}</Text>
                     <SelectField
                         id="image-provider"
-                        label="Image generation provider"
+                        label={t('imageProvider')}
                         value={settings.imageProvider}
                         options={IMAGE_PROVIDERS}
                         onChange={(v) => set('imageProvider', v as Settings['imageProvider'])}
                     />
                     <TextField
-                        label="Image generation endpoint"
+                        label={t('imageEndpoint')}
                         value={isCustomImage ? settings.imageEndpoint : IDEOGRAM_OFFICIAL_BASE}
                         onChange={(v) => set('imageEndpoint', v)}
                         placeholder="http://127.0.0.1:8000"
                         editable={isCustomImage}
                     />
                     <TextField
-                        label="Image generation secret key"
+                        label={t('imageKey')}
                         value={settings.imageSecretKey}
                         onChange={(v) => set('imageSecretKey', v)}
                         placeholder="Ideogram API key"
@@ -195,10 +197,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
                 <View style={styles.actions}>
                     <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-                        <Text style={styles.cancelText}>Cancel</Text>
+                        <Text style={styles.cancelText}>{t('cancel')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.saveButton} onPress={handleSave} testID="settings-save">
-                        <Text style={styles.saveText}>Save</Text>
+                        <Text style={styles.saveText}>{t('save')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>

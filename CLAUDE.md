@@ -15,7 +15,7 @@ Coding procedure:
 2. make a robust and efficient design
 3. create some test cases according to requirement
 4. write the code
-5. write unit and e2e tests (you can choose writing ut or e2e, depends on requirement or give both of them, for e2e tests, store all scripts under ./e2e_scripts, and write all intermediate e2e files to ./temp)
+5. write unit and e2e tests (you can choose writing ut or e2e, depends on requirement or give both of them, for e2e tests, store all e2e scripts under ./scripts, and write all intermediate e2e files(e,g screenshots) to ./temp)
 6. run current tests
 7. run all test cases for regression
 8. save prompt/requirement to 'historical_prompt/' as md file.

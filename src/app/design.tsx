@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { CanvasStage } from './components/design/CanvasStage';
 import { ContextMenu } from './components/design/ContextMenu';
 import { HeaderBackButton } from './components/design/HeaderBackButton';
@@ -19,6 +20,7 @@ import type { ElementTool } from './design/useCanvasInteraction';
 import { useElementEditing } from './design/useElementEditing';
 import { useGeneration } from './design/useGeneration';
 import { RefinedPrompt } from './types';
+import { useI18n } from '../i18n';
 
 // Stack header config: a custom back button (see HeaderBackButton) in place
 // of the default one, which disappears after a refresh.
@@ -26,6 +28,7 @@ const designScreenOptions = { headerLeft: () => <HeaderBackButton /> };
 
 export default function DesignScreen() {
     const params = useLocalSearchParams();
+    const { t } = useI18n();
 
     // Stable id for this design: passed in by the home page (freshly
     // generated for new designs, reused when re-opening a saved one) so
@@ -269,8 +272,10 @@ export default function DesignScreen() {
                             style={styles.titleInput}
                             value={title}
                             onChangeText={setTitle}
-                            placeholder="Untitled Design"
+                            placeholder={t('untitled')}
                         />
+                        {/* Language flag, left of the settings gear. */}
+                        <LanguageSwitcher style={styles.langButton} />
                         <TouchableOpacity
                             style={styles.settingsButton}
                             onPress={() => setShowSettings(true)}
@@ -293,7 +298,7 @@ export default function DesignScreen() {
                     {/* Background Info */}
                     {refinedData?.compositional_deconstruction?.background && (
                         <View style={styles.backgroundContainer}>
-                            <Text style={styles.groupLabel}>Background</Text>
+                            <Text style={styles.groupLabel}>{t('background')}</Text>
                             <Text style={styles.backgroundText}>{refinedData.compositional_deconstruction.background}</Text>
                         </View>
                     )}

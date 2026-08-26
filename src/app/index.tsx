@@ -1,8 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-    Alert,
     Image,
     SafeAreaView,
     ScrollView,
@@ -12,44 +11,36 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { SettingsDialog } from './components/SettingsDialog';
-import { Design, loadDesigns, markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
-import { refine } from './services/PromptRefiner';
-import { getMissingSettings, loadSettings } from './services/settings';
+import { useI18n } from '../i18n';
+import { useStartDesign } from './useStartDesign';
+import { Design, loadDesigns, markNavigationFromHome } from './services/designStore';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
 
-// The LLM (temperature 1.0) occasionally answers with malformed JSON; how many
-// refine attempts are made before giving up with an Alert.
-const REFINE_MAX_ATTEMPTS = 3;
-
 export default function IndexScreen() {
     const router = useRouter();
+    const { t } = useI18n();
 
     // State
     const [prompt, setPrompt] = useState('');
     const [selectedRatio, setSelectedRatio] = useState('4:3');
     const [width, setWidth] = useState('1024');
     const [height, setHeight] = useState('768');
-    const [isLoading, setIsLoading] = useState(false);
     // Saved designs shown in the "recent designs" sidebar, most recent first.
     const [designs, setDesigns] = useState<Design[]>([]);
     // Settings dialog (opened from the gear icon, top-right of the page).
     const [showSettings, setShowSettings] = useState(false);
-    // Transient "invalid JSON, retrying" message (auto-dismisses after 5s).
-    const [refineError, setRefineError] = useState<string | null>(null);
-    const refineErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Show the transient refine error; a fresh failure restarts the 5s timer.
-    const showRefineError = (message: string) => {
-        setRefineError(message);
-        if (refineErrorTimer.current) clearTimeout(refineErrorTimer.current);
-        refineErrorTimer.current = setTimeout(() => setRefineError(null), 5000);
-    };
+    // Start Design flow (settings validation → refine with retry → handoff →
+    // navigate); also owns the transient refine-error line.
+    const { isLoading, refineError, handleStartDesigning } = useStartDesign({
+        prompt, selectedRatio, width, height,
+    });
 
     useEffect(() => {
         setDesigns(loadDesigns());
-        return () => { if (refineErrorTimer.current) clearTimeout(refineErrorTimer.current); };
     }, []);
 
     // Re-open a saved design: the full payload lives in the design store, so
@@ -100,79 +91,11 @@ export default function IndexScreen() {
         }
     };
 
-    const handleStartDesigning = async () => {
-        if (!prompt.trim()) {
-            Alert.alert('Error', 'Please enter a prompt.');
-            return;
-        }
-        // The LLM rewrite needs a configured provider: name, a credential for
-        // preset vendors, and an endpoint for self-hosted backends.
-        const missingLlm = getMissingSettings(loadSettings()).filter((m) => m.startsWith('LLM'));
-        if (missingLlm.length > 0) {
-            Alert.alert('Error', `Missing settings: ${missingLlm.join(', ')}. Open Settings (gear icon) to configure them.`);
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const ratioString = selectedRatio === 'custom' ? `${width}:${height}` : selectedRatio;
-            const refinedPrompt = await refineWithRetry(await loadSystemPrompt(), ratioString);
-
-            // The refined prompt is too large for URL query params (HTTP 431):
-            // stash it as a handoff keyed by a fresh design id and navigate
-            // with the id alone.
-            const id = newDesignId();
-            setDesignHandoff(id, {
-                promptData: refinedPrompt,
-                size: { width: parseInt(width, 10) || 0, height: parseInt(height, 10) || 0 },
-            });
-            markNavigationFromHome();
-            router.push({ pathname: '/design', params: { id } });
-        } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to generate prompt. Please try again.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    // Refine the prompt. The LLM can answer with malformed JSON (temperature
-    // 1.0): parse each attempt, and on failure show a transient error and
-    // retry, giving up with an error after REFINE_MAX_ATTEMPTS.
-    const refineWithRetry = async (systemPrompt: string, ratioString: string): Promise<string> => {
-        for (let attempt = 1; attempt <= REFINE_MAX_ATTEMPTS; attempt++) {
-            const raw = await refine(systemPrompt, prompt, ratioString);
-            try {
-                JSON.parse(raw);
-                return raw;
-            } catch {
-                showRefineError(
-                    attempt < REFINE_MAX_ATTEMPTS
-                        ? `The LLM returned invalid JSON — retrying (${attempt + 1} of ${REFINE_MAX_ATTEMPTS})…`
-                        : 'The LLM returned invalid JSON on every attempt.',
-                );
-                if (attempt === REFINE_MAX_ATTEMPTS) {
-                    throw new Error('The LLM returned invalid JSON on every attempt. Please try again.');
-                }
-            }
-        }
-        throw new Error('Refine failed.'); // unreachable: the loop returns or throws
-    };
-
-    async function loadSystemPrompt(): Promise<string> {
-        try {
-            const response = await fetch("/system_prompt.txt");
-            if (!response.ok) {
-                throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
-            }
-            return await response.text();
-        } catch (error) {
-            console.error('[loadSystemPrompt Error]:', error);
-            throw new Error(`Could not load system prompt. Please ensure assets are correctly bundled.`);
-        }
-    }
-
     return (
         <SafeAreaView style={styles.container}>
+            {/* Language switcher (flag), pinned left of the settings gear. */}
+            <LanguageSwitcher style={styles.langButton} />
+
             {/* Settings gear, pinned to the page's top-right corner. */}
             <TouchableOpacity
                 style={styles.settingsButton}
@@ -185,10 +108,10 @@ export default function IndexScreen() {
             <View style={styles.mainContent}>
                 {/* Left Sidebar: Recent Designs (saved designs, most recent first) */}
                 <View style={styles.leftSidebar}>
-                    <Text style={styles.sidebarTitle}>最近的设计</Text>
+                    <Text style={styles.sidebarTitle}>{t('recentDesigns')}</Text>
                     <ScrollView style={styles.recentList}>
                         {designs.length === 0 ? (
-                            <Text style={styles.emptyText}>还没有保存的设计</Text>
+                            <Text style={styles.emptyText}>{t('noDesigns')}</Text>
                         ) : (
                             designs.map((design) => {
                                 // Preview the most recently generated image (if any).
@@ -214,7 +137,7 @@ export default function IndexScreen() {
 
                 {/* Right Section: Input Area */}
                 <View style={styles.rightSection}>
-                    <Text style={styles.sectionTitle}>Enter the description of your dreamed image</Text>
+                    <Text style={styles.sectionTitle}>{t('enterDescription')}</Text>
 
                     {/* Aspect Ratio Selection */}
                     <View style={styles.selectorContainer}>
@@ -232,7 +155,7 @@ export default function IndexScreen() {
                                 style={[styles.ratioButton, selectedRatio === 'custom' && styles.ratioButtonActive]}
                                 onPress={() => setSelectedRatio('custom')}
                             >
-                                <Text style={[styles.ratioText, selectedRatio === 'custom' && styles.ratioTextActive]}>custom</Text>
+                                <Text style={[styles.ratioText, selectedRatio === 'custom' && styles.ratioTextActive]}>{t('customRatio')}</Text>
                             </TouchableOpacity>
                         </ScrollView>
                     </View>
@@ -240,7 +163,7 @@ export default function IndexScreen() {
                     {/* Dimensions Row */}
                     <View style={styles.dimensionRow}>
                         <View style={styles.dimensionGroup}>
-                            <Text style={styles.dimensionLabel}>Width (W)</Text>
+                            <Text style={styles.dimensionLabel}>{t('widthLabel')}</Text>
                             <TextInput
                                 style={styles.dimInput}
                                 keyboardType="numeric"
@@ -249,7 +172,7 @@ export default function IndexScreen() {
                             />
                         </View>
                         <View style={styles.dimensionGroup}>
-                            <Text style={styles.dimensionLabel}>Height (H)</Text>
+                            <Text style={styles.dimensionLabel}>{t('heightLabel')}</Text>
                             <TextInput
                                 style={styles.dimInput}
                                 keyboardType="numeric"
@@ -284,7 +207,7 @@ export default function IndexScreen() {
                         onPress={handleStartDesigning}
                         disabled={isLoading}
                     >
-                        <Text style={styles.buttonText}>{isLoading ? 'Processing...' : '开始设计'}</Text>
+                        <Text style={styles.buttonText}>{isLoading ? t('processing') : t('startDesign')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -303,6 +226,14 @@ const styles = StyleSheet.create({
     mainContent: {
         flex: 1,
         flexDirection: 'row',
+    },
+    // Language flag, pinned just left of the settings gear (the gear occupies
+    // the rightmost 16+48px, so the flag sits at right: 72).
+    langButton: {
+        position: 'absolute',
+        top: 16,
+        right: 72,
+        zIndex: 10,
     },
     // Settings gear, pinned to the page's top-right corner (matches the
     // design page's toolbar icon size).

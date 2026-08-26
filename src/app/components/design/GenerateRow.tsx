@@ -1,5 +1,6 @@
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
+import { useI18n } from '../../../i18n';
 
 /** Save + Generate + Download Image buttons (with the "Saved ✓" confirmation) and the error line. */
 export const GenerateRow = ({
@@ -21,7 +22,9 @@ export const GenerateRow = ({
     onSave: () => void;
     onGenerate: () => void;
     onDownload: () => void;
-}) => (
+}) => {
+    const { t } = useI18n();
+    return (
     <>
         <View style={styles.generateRow}>
             <TouchableOpacity
@@ -30,7 +33,7 @@ export const GenerateRow = ({
                 disabled={dataMissing}
                 testID="save-button"
             >
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>{t('save')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
                 style={[styles.generateButton, dataMissing && styles.generateButtonDisabled]}
@@ -41,7 +44,7 @@ export const GenerateRow = ({
                 {isGenerating ? (
                     <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                    <Text style={styles.generateButtonText}>Generate</Text>
+                    <Text style={styles.generateButtonText}>{t('generate')}</Text>
                 )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -53,11 +56,12 @@ export const GenerateRow = ({
                 {isDownloading ? (
                     <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                    <Text style={styles.generateButtonText}>Download Image</Text>
+                    <Text style={styles.generateButtonText}>{t('downloadImage')}</Text>
                 )}
             </TouchableOpacity>
-            {showSaved && <Text style={styles.savedText}>Saved ✓</Text>}
+            {showSaved && <Text style={styles.savedText}>{t('saved')}</Text>}
         </View>
         {generateError && <Text style={styles.generateError}>{generateError}</Text>}
     </>
-);
+    );
+};

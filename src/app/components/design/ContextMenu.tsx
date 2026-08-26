@@ -1,5 +1,6 @@
 import { Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
+import { useI18n } from '../../../i18n';
 import { CanvasElement } from '../../types';
 
 /**
@@ -31,35 +32,36 @@ export const ContextMenu = ({
     onDelete: () => void;
 }) => {
     const isCanvasMenu = !element;
+    const { t } = useI18n();
     return (
         <>
             <View style={styles.menuBackdrop} onPointerDown={onClose} />
             <View style={[styles.contextMenu, { left: menu.x, top: menu.y }]}>
                 {!isCanvasMenu && (
                     <TouchableOpacity style={styles.contextMenuItem} onPress={onCopy}>
-                        <Text style={styles.contextMenuItemText}>Copy</Text>
+                        <Text style={styles.contextMenuItemText}>{t('copy')}</Text>
                     </TouchableOpacity>
                 )}
                 <TouchableOpacity
                     style={[styles.contextMenuItem, !canPaste && styles.contextMenuItemDisabled]}
                     onPress={canPaste ? onPaste : undefined}
                 >
-                    <Text style={styles.contextMenuItemText}>Paste</Text>
+                    <Text style={styles.contextMenuItemText}>{t('paste')}</Text>
                 </TouchableOpacity>
                 {!isCanvasMenu && (
                     <>
                         <View style={styles.contextMenuDivider} />
                         <TouchableOpacity style={styles.contextMenuItem} onPress={onEditDesc}>
-                            <Text style={styles.contextMenuItemText}>Edit description</Text>
+                            <Text style={styles.contextMenuItemText}>{t('editDescription')}</Text>
                         </TouchableOpacity>
                         {element.type === 'text' && (
                             <TouchableOpacity style={styles.contextMenuItem} onPress={onEditText}>
-                                <Text style={styles.contextMenuItemText}>Edit text</Text>
+                                <Text style={styles.contextMenuItemText}>{t('editText')}</Text>
                             </TouchableOpacity>
                         )}
                         <View style={styles.contextMenuDivider} />
                         <TouchableOpacity style={styles.contextMenuItemDanger} onPress={onDelete}>
-                            <Text style={styles.contextMenuItemTextDanger}>Delete</Text>
+                            <Text style={styles.contextMenuItemTextDanger}>{t('delete')}</Text>
                         </TouchableOpacity>
                     </>
                 )}

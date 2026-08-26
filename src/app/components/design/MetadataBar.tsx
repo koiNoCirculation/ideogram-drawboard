@@ -1,5 +1,6 @@
 import { Text, View } from 'react-native';
 import { styles } from '../../design/designStyles';
+import { useI18n } from '../../../i18n';
 import { ColorPalette } from '../ColorPalette';
 
 /** A small component to display a keyword as a stylized tag. */
@@ -34,23 +35,25 @@ export const MetadataBar = ({
     artStyle: string;
     palette: string[];
     onPaletteChange: (colors: string[]) => void;
-}) => (
+}) => {
+    const { t } = useI18n();
+    return (
     <View style={styles.metadataContainer}>
         <View style={styles.metadataGroup}>
-            <Text style={styles.groupLabel}>Aesthetics</Text>
+            <Text style={styles.groupLabel}>{t('aesthetics')}</Text>
             <View style={styles.tagRow}>
                 {aesthetics.split(',').map((val, i) => <Tag key={`aes-${i}`} text={val} />)}
             </View>
         </View>
         <View style={styles.metadataGroup}>
-            <Text style={styles.groupLabel}>Lighting</Text>
+            <Text style={styles.groupLabel}>{t('lighting')}</Text>
             <View style={styles.tagRow}>
                 {lighting.split(',').map((val, i) => <Tag key={`light-${i}`} text={val} />)}
             </View>
         </View>
         {artStyle !== '' && (
             <View style={styles.metadataGroup}>
-                <Text style={styles.groupLabel}>Art Style</Text>
+                <Text style={styles.groupLabel}>{t('artStyle')}</Text>
                 <View style={styles.tagRow}>
                     {artStyle.split(' ').map((val, i) => <Tag key={`style-${i}`} text={val} />)}
                 </View>
@@ -58,21 +61,22 @@ export const MetadataBar = ({
         )}
         {photo !== '' && (
             <View style={styles.metadataGroup}>
-                <Text style={styles.groupLabel}>Photo</Text>
+                <Text style={styles.groupLabel}>{t('photo')}</Text>
                 <View style={styles.tagRow}>
                     {photo.split(',').map((val, i) => <Tag key={`photo-${i}`} text={val} />)}
                 </View>
             </View>
         )}
         <View style={styles.metadataGroup}>
-            <Text style={styles.groupLabel}>Medium</Text>
+            <Text style={styles.groupLabel}>{t('medium')}</Text>
             <View style={styles.tagRow}>
                 <Tag text={medium} />
             </View>
         </View>
         <View style={styles.metadataGroup}>
-            <Text style={styles.groupLabel}>Palette</Text>
+            <Text style={styles.groupLabel}>{t('palette')}</Text>
             <ColorPalette palette={palette} onPaletteChange={onPaletteChange} />
         </View>
     </View>
-);
+    );
+};

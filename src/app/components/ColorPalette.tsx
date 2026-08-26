@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import { Plus } from 'lucide-react-native';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useI18n } from '../../i18n';
 import { ColorPicker } from './ColorPicker';
 
 const POPOVER_W = 300;
@@ -25,6 +26,7 @@ export function ColorPalette({ palette, onPaletteChange }: {
     palette: string[];
     onPaletteChange: (colors: string[]) => void;
 }) {
+    const { t } = useI18n();
     const [edit, setEdit] = useState<EditState>(null);
     // The hex currently being composed in the popover (driven by the picker).
     const [draft, setDraft] = useState('#FFFFFF');
@@ -105,7 +107,7 @@ export function ColorPalette({ palette, onPaletteChange }: {
                 style={[styles.popover, { left: popoverLeft, top: popoverTop }]}
                 onPointerDown={(e) => e.stopPropagation()}
             >
-                <Text style={styles.popoverTitle}>{isEdit ? 'Edit color' : 'Add color'}</Text>
+                <Text style={styles.popoverTitle}>{isEdit ? t('editColor') : t('addColor')}</Text>
                 <ColorPicker
                     initialColor={isEdit ? palette[edit.index] : '#FFFFFF'}
                     onDraftChange={setDraft}
@@ -116,22 +118,22 @@ export function ColorPalette({ palette, onPaletteChange }: {
                     {isEdit ? (
                         <>
                             <TouchableOpacity style={[styles.btn, styles.btnPrimary, styles.btnGap]} onPress={setSwatch}>
-                                <Text style={styles.btnPrimaryText}>Set color</Text>
+                                <Text style={styles.btnPrimaryText}>{t('setColor')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.btn, styles.btnDanger, styles.btnGap]} onPress={removeSwatch}>
-                                <Text style={styles.btnDangerText}>Remove</Text>
+                                <Text style={styles.btnDangerText}>{t('remove')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={close}>
-                                <Text style={styles.btnGhostText}>Cancel</Text>
+                                <Text style={styles.btnGhostText}>{t('cancel')}</Text>
                             </TouchableOpacity>
                         </>
                     ) : (
                         <>
                             <TouchableOpacity style={[styles.btn, styles.btnPrimary, styles.btnGap]} onPress={addColor}>
-                                <Text style={styles.btnPrimaryText}>Add color</Text>
+                                <Text style={styles.btnPrimaryText}>{t('addColor')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={close}>
-                                <Text style={styles.btnGhostText}>Cancel</Text>
+                                <Text style={styles.btnGhostText}>{t('cancel')}</Text>
                             </TouchableOpacity>
                         </>
                     )}

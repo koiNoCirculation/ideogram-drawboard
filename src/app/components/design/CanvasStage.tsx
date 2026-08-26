@@ -5,6 +5,7 @@ import { gridCellUnits, RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from '../../design/
 import { bboxToGeometry, AlignGuides } from '../../design/canvas';
 import type { ElementTool } from '../../design/useCanvasInteraction';
 import { CanvasElement, isEmptyElement } from '../../types';
+import { useI18n } from '../../../i18n';
 import { ElementBox } from '../ElementBox';
 import type { Corner } from '../ElementBox';
 import { CanvasRulers } from './CanvasRulers';
@@ -98,7 +99,9 @@ export const CanvasStage = ({
     onSave: () => void;
     onGenerate: () => void;
     onDownload: () => void;
-}) => (
+}) => {
+    const { t } = useI18n();
+    return (
     <View style={styles.canvasContainer}>
         {/* "Show grid" / "Show elements" toggles, pinned to the
             canvas area's top-right corner. */}
@@ -111,7 +114,7 @@ export const CanvasStage = ({
                 <View style={[styles.checkbox, showGrid && styles.checkboxChecked]}>
                     {showGrid && <Check size={11} color="#FFFFFF" />}
                 </View>
-                <Text style={styles.checkboxLabel}>Show grid</Text>
+                <Text style={styles.checkboxLabel}>{t('showGrid')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
                 testID="show-elements-toggle"
@@ -121,7 +124,7 @@ export const CanvasStage = ({
                 <View style={[styles.checkbox, showElements && styles.checkboxChecked]}>
                     {showElements && <Check size={11} color="#FFFFFF" />}
                 </View>
-                <Text style={styles.checkboxLabel}>Show elements</Text>
+                <Text style={styles.checkboxLabel}>{t('showElements')}</Text>
             </TouchableOpacity>
         </View>
 
@@ -314,7 +317,7 @@ export const CanvasStage = ({
                         })()}
                     </>
                 ) : (
-                    <Text style={styles.canvasPlaceholderText}>Canvas Area</Text>
+                    <Text style={styles.canvasPlaceholderText}>{t('canvasArea')}</Text>
                 )}
 
                 {/* Live rectangle of the element being created by dragging */}
@@ -351,7 +354,7 @@ export const CanvasStage = ({
         {/* Creation tool hint */}
         {activeTool && (
             <Text style={styles.toolHint}>
-                Drag on the canvas to create a {activeTool === 'text' ? 'text' : 'object'} element · Esc to cancel
+                {activeTool === 'text' ? t('toolHintText') : t('toolHintObj')}
             </Text>
         )}
 
@@ -371,4 +374,5 @@ export const CanvasStage = ({
             onDownload={onDownload}
         />
     </View>
-);
+    );
+};
