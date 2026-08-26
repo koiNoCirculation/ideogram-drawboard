@@ -241,6 +241,11 @@ export const styles = StyleSheet.create({
     generateButtonDisabled: {
         backgroundColor: '#B0D4FF',
     },
+    // Download Image, shown to the right of Generate: same gap as Save→Generate
+    // (saveButton's marginRight: 12).
+    downloadButton: {
+        marginLeft: 12,
+    },
     generateButtonText: {
         color: '#FFFFFF',
         fontSize: 15,

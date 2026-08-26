@@ -28,6 +28,7 @@ export const GenerateRow = ({
                 style={[styles.saveButton, dataMissing && styles.saveButtonDisabled]}
                 onPress={onSave}
                 disabled={dataMissing}
+                testID="save-button"
             >
                 <Text style={styles.saveButtonText}>Save</Text>
             </TouchableOpacity>
@@ -35,6 +36,7 @@ export const GenerateRow = ({
                 style={[styles.generateButton, dataMissing && styles.generateButtonDisabled]}
                 onPress={onGenerate}
                 disabled={dataMissing || isGenerating}
+                testID="generate-button"
             >
                 {isGenerating ? (
                     <ActivityIndicator color="#FFFFFF" size="small" />
@@ -43,7 +45,7 @@ export const GenerateRow = ({
                 )}
             </TouchableOpacity>
             <TouchableOpacity
-                style={[styles.generateButton, dataMissing && styles.generateButtonDisabled]}
+                style={[styles.generateButton, styles.downloadButton, dataMissing && styles.generateButtonDisabled]}
                 onPress={onDownload}
                 disabled={dataMissing || isDownloading}
                 testID="download-image-button"
