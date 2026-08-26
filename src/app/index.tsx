@@ -13,7 +13,7 @@ import {
     View,
 } from 'react-native';
 import { SettingsDialog } from './components/SettingsDialog';
-import { Design, loadDesigns, newDesignId, setDesignHandoff } from './services/designStore';
+import { Design, loadDesigns, markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
 import { refine } from './services/PromptRefiner';
 import { getMissingSettings, loadSettings } from './services/settings';
 
@@ -55,6 +55,7 @@ export default function IndexScreen() {
     // Re-open a saved design: the full payload lives in the design store, so
     // only the id goes in the URL.
     const handleOpenDesign = (design: Design) => {
+        markNavigationFromHome();
         router.push({ pathname: '/design', params: { id: design.id } });
     };
 
@@ -125,6 +126,7 @@ export default function IndexScreen() {
                 promptData: refinedPrompt,
                 size: { width: parseInt(width, 10) || 0, height: parseInt(height, 10) || 0 },
             });
+            markNavigationFromHome();
             router.push({ pathname: '/design', params: { id } });
         } catch (error: any) {
             Alert.alert('Error', error.message || 'Failed to generate prompt. Please try again.');

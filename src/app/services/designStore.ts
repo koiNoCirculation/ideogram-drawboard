@@ -85,6 +85,32 @@ export function clearDesignHandoff(id: string) {
     writeHandoffs(map);
 }
 
+// Set by the home page when it navigates into a design, so the design page's
+// back button can tell a known previous page (the home page) from an unknown
+// one (bare /design visit, fresh tab, external referrer). sessionStorage
+// survives refresh, so the flag is still valid after a reload.
+const FROM_HOME_KEY = 'drawboard.fromHome';
+
+/** Record that this session navigated from the home page into a design. */
+export function markNavigationFromHome() {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    try {
+        window.sessionStorage.setItem(FROM_HOME_KEY, '1');
+    } catch (e) {
+        // sessionStorage unavailable (private mode) — back falls back to home.
+    }
+}
+
+/** True when the current session reached /design from the home page. */
+export function cameFromHome(): boolean {
+    if (typeof window === 'undefined' || !window.sessionStorage) return false;
+    try {
+        return window.sessionStorage.getItem(FROM_HOME_KEY) === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
 /** All saved designs, most-recently-updated first. Empty when none are stored. */
 export function loadDesigns(): Design[] {
     if (typeof window === 'undefined' || !window.localStorage) return [];

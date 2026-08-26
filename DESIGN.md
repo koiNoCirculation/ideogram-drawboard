@@ -40,7 +40,7 @@ src/app/
     PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
     IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
     settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
-    designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ newDesignId
+    designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ 返回首页导航标志 + newDesignId
     color.ts             hex/RGB/HSV 互转与 clamp 工具
   test/services/         jest 单测（PromptRefiner、IdeogramPrompt、settings）
 public/
@@ -101,7 +101,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 首页「开始设计」→ 生成新设计 id（`newDesignId`）→ `setDesignHandoff(id, { promptData, size })` 把 LLM 结果与画布尺寸暂存到 localStorage（key `drawboard.handoff`，按 id 的映射，上限 10 条、超了逐出最旧）→ `router.push('/design', { id })`。handoff 读时不消费，未保存设计的刷新/前进后退仍能解析；Save 成功时 `clearDesignHandoff(id)`（store 成为唯一事实来源，避免重开时读到编辑前的旧 payload）。
 - 首页点最近设计卡片 → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
 - 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
-- 代码中无显式返回按钮，返回用浏览器/路由后退。
+- 设计页页头有显式返回按钮（左侧，ChevronLeft，与齿轮按钮同尺寸）：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在），点击做**原生** `window.history.back()` 返回上一页——刷新后路由的 navigation state 只按当前 URL 重建，`router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
 
 ## index.tsx（首页）
 
@@ -125,7 +125,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 ### 初始化
 - `designId`：首页导航恒带 `id`（新设计由首页生成、重开设计复用原 id）；裸访问 /design 无 id 时现场生成（无数据，显示占位）。
 - 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；store 里的 `images` → 图片历史，`viewIndex` 指向最新一张。
-- 页头：可编辑标题 + 右侧设置齿轮按钮（打开设置对话框，见「设置」节）。
+- 页头：左侧返回按钮（行为见「页面与导航」节）+ 可编辑标题 + 右侧设置齿轮按钮（打开设置对话框，见「设置」节）。
 
 ### 元数据栏（六个部分，各 ≤20% 宽度，内部换行）
 一行六个部分：Aesthetics / Lighting / Art Style / Photo / Medium / Palette。
@@ -240,7 +240,7 @@ Photoshop 风格图层列表，绝对定位于画布区右下角（距边缘 12p
 
 ### designStore.ts
 localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失败返回空数组）/ `getDesign` / `upsertDesign`（按 id 插入或替换，倒序持久化并返回最新列表）。
-导航 handoff（key `drawboard.handoff`，按 id 的 `{ promptData, size }` 映射，上限 10 条、超了逐出最旧）：`setDesignHandoff`（首页发起设计时写入）/ `getDesignHandoff`（设计页按 id 读，不消费）/ `clearDesignHandoff`（Save 成功后清除）；`newDesignId` 生成 `design-<时间戳>-<随机>` id。
+导航 handoff（key `drawboard.handoff`，按 id 的 `{ promptData, size }` 映射，上限 10 条、超了逐出最旧）：`setDesignHandoff`（首页发起设计时写入）/ `getDesignHandoff`（设计页按 id 读，不消费）/ `clearDesignHandoff`（Save 成功后清除）；`newDesignId` 生成 `design-<时间戳>-<随机>` id；`markNavigationFromHome` / `cameFromHome`（sessionStorage 标志 `drawboard.fromHome`，记录本会话由首页进入设计页，供设计页返回按钮判断回上一页还是去首页，见「页面与导航」节）。
 
 ### color.ts
 无依赖的颜色工具：`hexToRgb`（#RGB/#RRGGBB，无 # 亦可）、`rgbToHex`（大写）、`rgbToHsv` / `hsvToRgb`、`clamp01` / `clamp255`、`rgbToCss`。
@@ -251,4 +251,5 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 - `PromptRefiner.spec.ts`：mock `fetch` 与 settings 模块，验证 refine / resolveContradictionInBBox 的请求体（system prompt、caption 原文）、透传返回、错误状态与非预期结构的抛错。
 - `settings.spec.ts`：纯函数单测——厂商/自建后端端点解析、自建默认地址、官方/本地图像 URL、active profile 解析、各项缺失判定（LLM key 仅自建后端可空、图像 key 仅 Custom 可空）、per-provider profile 互不干扰、无 localStorage 时的默认值。
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
-- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言），验证脚本为一次性临时文件，不入库。
+- `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）。
+- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）

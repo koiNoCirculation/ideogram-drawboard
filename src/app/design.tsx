@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Settings as SettingsIcon } from 'lucide-react-native';
+import { ChevronLeft, Settings as SettingsIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CanvasStage } from './components/design/CanvasStage';
@@ -11,7 +11,7 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { styles } from './design/designStyles';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, CANVAS_WHEEL_ZOOM_FACTOR, gridCellUnits, RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from './design/constants';
 import { snapToGridValue } from './design/canvas';
-import { getDesign, getDesignHandoff, newDesignId } from './services/designStore';
+import { cameFromHome, getDesign, getDesignHandoff, newDesignId } from './services/designStore';
 import { useHistory } from './design/useHistory';
 import { useCanvasInteraction } from './design/useCanvasInteraction';
 import type { ElementTool } from './design/useCanvasInteraction';
@@ -200,6 +200,21 @@ export default function DesignScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTool]);
 
+    // Back button: return to the previous page when the session reached this
+    // design from the home page, else go to the home page. The home page sets
+    // the flag on navigation (sessionStorage, so it survives a refresh).
+    // Native history back is used because on refresh the router's navigation
+    // state is rebuilt from the current URL alone — router.back() would have
+    // no route to pop — while the native back fires popstate, which the
+    // router handles and restores the home page.
+    const handleBack = () => {
+        if (cameFromHome()) {
+            window.history.back();
+        } else {
+            router.replace('/');
+        }
+    };
+
     // Toggle a creation tool (a second press deactivates it) and clear any
     // in-progress hover highlight.
     const toggleTool = (tool: ElementTool) => {
@@ -259,6 +274,13 @@ export default function DesignScreen() {
                 <View style={styles.canvasArea}>
                     {/* Top Header: Title Input + Settings gear (top-right) */}
                     <View style={styles.header}>
+                        <TouchableOpacity
+                            style={styles.backButton}
+                            onPress={handleBack}
+                            testID="back-button"
+                        >
+                            <ChevronLeft color="#007AFF" size={28} />
+                        </TouchableOpacity>
                         <TextInput
                             style={styles.titleInput}
                             value={title}
