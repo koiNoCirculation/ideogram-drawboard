@@ -347,6 +347,10 @@ export const styles = StyleSheet.create({
     historyThumbActive: {
         borderColor: '#007AFF',
     },
+    // History slot whose image is still resolving or whose IDB record is gone.
+    historyThumbMissing: {
+        backgroundColor: '#E5E5E5',
+    },
     canvasPlaceholderText: {
         color: '#CCC',
         fontSize: 20,

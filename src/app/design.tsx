@@ -344,7 +344,7 @@ export default function DesignScreen() {
                         onContextMenu={editing.openContextMenu}
                         onCanvasContextMenu={editing.openCanvasContextMenu}
                         createDraft={interaction.createDraft}
-                        images={generation.images}
+                        imageUris={generation.imageUris}
                         shownIndex={generation.shownIndex}
                         onView={generation.setViewIndex}
                         dataMissing={!refinedData}

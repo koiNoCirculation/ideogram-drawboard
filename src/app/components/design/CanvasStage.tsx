@@ -48,7 +48,7 @@ export const CanvasStage = ({
     onContextMenu,
     onCanvasContextMenu,
     createDraft,
-    images,
+    imageUris,
     shownIndex,
     onView,
     dataMissing,
@@ -89,7 +89,8 @@ export const CanvasStage = ({
     /** Right-click on empty canvas (not an element box): the Paste-only menu. */
     onCanvasContextMenu: (e: any) => void;
     createDraft: { left: number; top: number; width: number; height: number } | null;
-    images: string[];
+    /** Image refs resolved to displayable URIs (null while resolving / missing). */
+    imageUris: (string | null)[];
     shownIndex: number;
     onView: (index: number) => void;
     dataMissing: boolean;
@@ -362,7 +363,7 @@ export const CanvasStage = ({
 
         {/* History of generated images: click a thumbnail to view it
             on the canvas (the latest is shown by default). */}
-        <HistoryStrip images={images} shownIndex={shownIndex} onView={onView} />
+        <HistoryStrip uris={imageUris} shownIndex={shownIndex} onView={onView} />
 
         {/* Save + Generate buttons */}
         <GenerateRow

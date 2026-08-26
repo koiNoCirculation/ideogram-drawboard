@@ -19,6 +19,7 @@ src/
     design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
     types.ts               RefinedPrompt / CanvasElement / isEmptyElement
     useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff（含原始 prompt）→跳转；瞬态错误行）
+    useImageUris.ts        图片 ref→可显示 uri 的异步解析 hook（IndexedDB id 查库、URL 透传，按索引对齐；首页卡片与设计页共用）
     design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
       constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
       canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides / withVisibleElementsOnly（生成前剔除隐藏元素）
@@ -49,11 +50,12 @@ src/
       PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
       IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
       imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
+      imageStore.ts        生成图持久化：生成后抓图转 base64 data URI 存 IndexedDB（随机 id 为键）+ 按 ref 解析（URL 透传），见「imageStore.ts」节
       settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
       designStore.ts       localStorage 设计持久化（{prompt, images, rawPrompt} 框架）+ 导航 handoff（未保存设计按 id 暂存，含原始 prompt）+ 返回首页导航标志 + newDesignId
       color.ts             hex/RGB/HSV 互转与 clamp 工具
     test/
-      services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload）
+      services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload、imageStore）
       i18n/                jest 单测（locale 加载/持久化、双语映射、占位替换、key 对齐）
 public/
   system_prompt.txt                       生成 JSON prompt 的 LLM 系统提示词（完整契约）
@@ -84,6 +86,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### Design（designStore.ts）
 保存的设计 = `{ id, prompt: RefinedPrompt, images: string[], size: {width, height}, updatedAt, rawPrompt? }`，存于 `localStorage['drawboard.designs']`，按 `updatedAt` 倒序。`size` 无法从 prompt 恢复所以单独存；`id` 用于重复保存时 upsert 同一条记录。`rawPrompt` = 用户输入的原始一句话 prompt（Show Prompt 对话框左栏展示用；旧设计无此字段，左栏显示为空）。
+`images` 的每个元素是**图片 ref**：新设计存生成时的随机图片 id（`img-…`，对应 IndexedDB 里的 base64 data URI，见「imageStore.ts」节）；**旧设计或转换失败回退时存原始 URL**（显示时原样透传）。展示/下载前一律经 `resolveImageRef` 解析（id → IDB 查 data URI，URL → 原样返回，查不到 → null 渲染空占位）。
 
 ## 设置（Settings）
 
@@ -221,11 +224,11 @@ Photoshop 风格图层列表，绝对定位于画布区右下角（距边缘 12p
    重置时机刻意放在**合并成功之后**：重写调用失败或返回非法 JSON 时保留标记，下次 Generate 自动重试；重写成功但生成 API 失败也不需重写（desc 已与当前 bbox 一致且已写回 `refinedData`）。
 3. **合并**：只把改写回来的 `desc` 逐个元素合并回本地 caption（要求 index 对应、type 相同、desc 为非空字符串，否则保留原元素）——画布 bbox 永远是唯一事实来源。
 4. **规范化**：`withVisibleElementsOnly`（剔除隐藏元素，见「图层列表」节）+ `normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
-5. **请求与结果**：POST 到设置中的图像生成端点（`getImageUrl`，Official = 官方 API、Custom = 本地/私有化端点）+ 路径 `/v1/ideogram-v4/generate`，密钥非空时带 `Api-Key` 头；取 `data[0].url` 追加进 `images` 并把画布切到新图；失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。
+5. **请求与结果**：POST 到设置中的图像生成端点（`getImageUrl`，Official = 官方 API、Custom = 本地/私有化端点）+ 路径 `/v1/ideogram-v4/generate`，密钥非空时带 `Api-Key` 头；取 `data[0].url` 后经 `saveGeneratedImage` 转 base64 持久化（见「imageStore.ts」节，**任何失败回退存原始 URL**、不阻塞生成），把返回的 ref 追加进 `images` 并把画布切到新图；失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。
 
 ### 下载图片（Download Image）
 Save/Generate 行中 Generate 右侧的按钮，下载**画布当前选中**的那张生成图（历史条选中的缩略图，默认最新一张）：
-- 有选中图 → `downloadImage`（services/imageDownload.ts）fetch 该 URL → blob → 临时 `<a download>`（文件名 `{designId}.png`）点击触发浏览器保存窗口；下载中按钮显示 ActivityIndicator 并禁用；fetch 失败同样走红悬浮提示。
+- 有选中图 → 先 `resolveImageRef` 把 ref 解析成可显示 uri（IDB data URI 或透传 URL；解析不到按「无图可下」处理）→ `downloadImage`（services/imageDownload.ts）fetch 该 uri（data URI 同样可 fetch）→ blob → 临时 `<a download>`（文件名 `{designId}.png`）点击触发浏览器保存窗口；下载中按钮显示 ActivityIndicator 并禁用；fetch 失败同样走红悬浮提示。
 - 还没有任何生成图（首页重写后未生成、或历史设计无图）→ 按钮仍可用，点击弹**红色悬浮提示**（视口顶部居中、Stack 页头下方，`pointerEvents` 关闭）「No image has been generated yet — generate one first, then download.」，**5 秒后自动消失**（新的失败重新计时）。
 - `refinedData` 缺失时与 Save/Generate 一样禁用。
 
@@ -274,6 +277,16 @@ Save/Generate 行中 Download Image 右侧的按钮（12px 间距），点击弹
 - key 按文档顺序重建：photo 模式 `aesthetics, lighting, photo, medium, color_palette`；非 photo 模式 `aesthetics, lighting, medium, art_style, color_palette`；空字符串字段省略。
 - `color_palette`：过滤非法 hex、转大写、截断到 16 个。
 
+### imageStore.ts
+生成图本地持久化（官方 Ideogram 返回的图 URL 有过期时间，所以生成后立即抓图存本地）：
+- IndexedDB 库 `drawboard-images`（version 1，object store `images`，keyPath `id`），记录 `{ id, uri, createdAt }`，`uri` 为完整 `data:<mime>;base64,…` 字符串。
+- `newImageId()`：`img-<时间戳36>-<随机6>`（同 `newDesignId` 格式）。
+- `isDirectUri(ref)`：`http://` / `https://` / `data:` 开头 → true（旧设计/回退条目，解析时原样透传）。
+- `saveGeneratedImage(url)`：fetch → `arrayBuffer` → 分块 `String.fromCharCode` + `btoa` 转 base64（mime 取 `content-type` 头，缺省 `image/png`）→ put 进 IDB → 返回新 id；**任何失败**（fetch/CORS/网络/非 2xx/IDB 不可用）`console.error` 后**返回原始 url**（图仍会显示但随服务过期），永不抛错。
+- `resolveImageRef(ref)`：`isDirectUri` 直接返回；否则 IDB `get`，记录存在且 `uri` 非空返回之，否则 `null`（调用方渲染空占位），不抛错。
+- IDB 打开用单例 promise，失败/关闭时清缓存（失败不毒化后续 open）；`typeof indexedDB === 'undefined'` 时全部走失败/透传路径。
+- 配套 hook `useImageUris(refs)`（`src/app/useImageUris.ts`，首页卡片与设计页共用）：按 ref 缓存解析结果（first-write-wins，迟到的结果落在已移除的 ref 上无害，无需取消），返回与 `refs` 按索引对齐的 uri 数组（解析中/缺失 = `null`）。
+
 ### designStore.ts
 localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失败返回空数组）/ `getDesign` / `upsertDesign`（按 id 插入或替换，倒序持久化并返回最新列表）。
 导航 handoff（key `drawboard.handoff`，按 id 的 `{ promptData, size }` 映射，上限 10 条、超了逐出最旧）：`setDesignHandoff`（首页发起设计时写入）/ `getDesignHandoff`（设计页按 id 读，不消费）/ `clearDesignHandoff`（Save 成功后清除）；`newDesignId` 生成 `design-<时间戳>-<随机>` id；`markNavigationFromHome` / `cameFromHome`（sessionStorage 标志 `drawboard.fromHome`，记录本会话由首页进入设计页，供设计页返回按钮判断回上一页还是去首页，见「页面与导航」节）。
@@ -289,5 +302,6 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
 - `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）；`rawPrompt` 在 handoff 与已存设计中的持久化（含旧格式缺省、upsert 保留）。
 - `imageDownload.spec.ts`：纯函数单测（stub fetch/document/URL object-URL）——成功时以正确文件名经 `<a download>` 点击触发下载；fetch 失败时抛错且不动 DOM。
+- `imageStore.spec.ts`：纯函数单测（`fake-indexeddb` 内存 IDB，每测试新 factory + `jest.resetModules` 隔离模块级单例；stub fetch 的 `arrayBuffer`，注意 Node Buffer 池——须 `new Uint8Array(Buffer)` 拷出）——`newImageId` 格式/唯一、`isDirectUri` 判定、成功存 data URI 后按 id 查回、fetch 失败/非 2xx/IDB 不可用三路径回退原 URL、URL 透传不碰 IDB、未命中 id → null。
 - `i18n.spec.ts`：纯函数单测（内存 storage 挂到 `window.localStorage`）——默认 en-US、合法/非法存储值回退、`persistLocale` 写回、题目要求的全部英中映射、`{n}`/`{items}` 占位替换、未知 key 透传、双语表 key 对齐且无空值。
-- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。
+- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）；图片持久化专项为 `scripts/e2e_image_store.cjs`（IDB 设计打开显示、生成存 base64 随机 id、Save 存 id 后 reload 仍显示、转换失败回退 URL、旧 URL 透传、首页卡片混合 ref、下载文件名）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。

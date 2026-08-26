@@ -12,6 +12,16 @@ const PNG = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64'
 );
+// A second, distinct 1x1 PNG: generated images are now persisted as base64
+// data URIs, so the mock image route alternates bodies by index — otherwise
+// all history thumbnails share one identical data URI and "clicking a
+// thumbnail switches the canvas" becomes unobservable.
+const PNG_ALT = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64'
+);
+const DATA_URI = `data:image/png;base64,${PNG.toString('base64')}`;
+const DATA_URI_ALT = `data:image/png;base64,${PNG_ALT.toString('base64')}`;
 
 const BASE_PROMPT = {
     aspect_ratio: '4:3',
@@ -160,8 +170,13 @@ async function mockApis(page, { llmContent = null, genFail = false } = {}) {
             body: JSON.stringify({ data: [{ url: `${BASE}/regress-img-${genCount}.png` }] }),
         });
     });
-    await page.route('**/regress-img-*.png', (route) =>
-        route.fulfill({ contentType: 'image/png', body: PNG }));
+    // Even-indexed images get the plain PNG, odd-indexed the alternate, so
+    // each generated image's persisted data URI is unique within the run.
+    await page.route('**/regress-img-*.png', (route) => {
+        const m = route.request().url().match(/regress-img-(\d+)\.png/);
+        const body = m && Number(m[1]) % 2 === 1 ? PNG_ALT : PNG;
+        return route.fulfill({ contentType: 'image/png', body });
+    });
     return log;
 }
 
@@ -826,8 +841,9 @@ const GREY = 'rgb(204, 204, 204)';
         ok(jp1.compositional_deconstruction.elements[0].desc === 'A golden retriever sitting in the center.',
             'json_prompt carries the original desc');
         ok(await page.getByText('Generated (1)').count() === 1, 'history shows Generated (1)');
-        ok((await canvasLoc(page).locator('img').first().getAttribute('src')).includes('regress-img-1'),
-            'new image shown on the canvas');
+        // Image #1 (odd) was persisted as its base64 data URI, not the raw URL.
+        ok((await canvasLoc(page).locator('img').first().getAttribute('src')) === DATA_URI_ALT,
+            'new image shown on the canvas as its base64 data URI');
 
         // Dragged generate: exactly one rewrite LLM call, descs merged back.
         const canvasW = (await canvasLoc(page).boundingBox()).width;
@@ -899,14 +915,14 @@ const GREY = 'rgb(204, 204, 204)';
         ok(await page.locator('text=/status 500/').count() === 1, 'failure surfaces the status');
         ok(await page.getByText('Generated (4)').count() === 1, 'no image added on failure');
 
-        // History strip: 4 thumbnails + the canvas image = 5 <img>s in the DOM
-        // (the canvas img comes first, so thumbnail i is nth(i+1)).
-        const allImgs = page.locator('img[src*="regress-img-"]');
+        // History strip: 4 thumbnails + the canvas image = 5 data-URI <img>s
+        // in the DOM (the canvas img comes first, so thumbnail i is nth(i+1)).
+        const allImgs = page.locator('img[src^="data:image"]');
         ok(await allImgs.count() === 5, `4 thumbnails + 1 canvas image (got ${await allImgs.count()})`);
         await allImgs.nth(1).click(); // first thumbnail = generated image #1
         await page.waitForTimeout(300);
-        ok((await canvasLoc(page).locator('img').first().getAttribute('src')).includes('regress-img-1'),
-            'clicking a thumbnail switches the canvas image');
+        ok((await canvasLoc(page).locator('img').first().getAttribute('src')) === DATA_URI_ALT,
+            'clicking a thumbnail switches the canvas image (to image #1 data URI)');
         await page.close();
     });
 

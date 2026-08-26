@@ -7,36 +7,43 @@ import { useI18n } from '../../../i18n';
  * that image on the canvas; the one currently shown gets a blue border.
  */
 export const HistoryStrip = ({
-    images,
+    uris,
     shownIndex,
     onView,
 }: {
-    images: string[];
+    /** Resolved image URIs (null while resolving or when the IDB record is gone). */
+    uris: (string | null)[];
     shownIndex: number;
     onView: (index: number) => void;
 }) => {
     const { t } = useI18n();
-    if (images.length === 0) return null;
+    if (uris.length === 0) return null;
     return (
         <View style={styles.historyStrip}>
-            <Text style={styles.historyLabel}>{`${t('generated')} (${images.length})`}</Text>
+            <Text style={styles.historyLabel}>{`${t('generated')} (${uris.length})`}</Text>
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.historyRow}
             >
-                {images.map((url, i) => (
+                {uris.map((uri, i) => (
                     <TouchableOpacity
                         key={`hist-${i}`}
                         onPress={() => onView(i)}
                         activeOpacity={0.8}
                         testID={`history-thumb-${i}`}
                     >
-                        <Image
-                            source={{ uri: url }}
-                            style={[styles.historyThumb, i === shownIndex && styles.historyThumbActive]}
-                            resizeMode="cover"
-                        />
+                        {uri ? (
+                            <Image
+                                source={{ uri }}
+                                style={[styles.historyThumb, i === shownIndex && styles.historyThumbActive]}
+                                resizeMode="cover"
+                            />
+                        ) : (
+                            // IDB record not resolved yet (or gone): empty slot
+                            // keeps the strip's layout and click targets stable.
+                            <View style={[styles.historyThumb, styles.historyThumbMissing]} />
+                        )}
                     </TouchableOpacity>
                 ))}
             </ScrollView>

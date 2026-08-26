@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     Image,
     SafeAreaView,
@@ -15,6 +15,7 @@ import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { SettingsDialog } from './components/SettingsDialog';
 import { useI18n } from '../i18n';
 import { useStartDesign } from './useStartDesign';
+import { useImageUris } from './useImageUris';
 import { Design, loadDesigns, markNavigationFromHome } from './services/designStore';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
@@ -42,6 +43,14 @@ export default function IndexScreen() {
     useEffect(() => {
         setDesigns(loadDesigns());
     }, []);
+
+    // Resolve each card's preview image (IDs into the IndexedDB image store;
+    // legacy URL entries pass through), aligned by index with `designs`.
+    const latestRefs = useMemo(
+        () => designs.map((d) => (d.images.length > 0 ? d.images[d.images.length - 1] : null)),
+        [designs],
+    );
+    const latestUris = useImageUris(latestRefs);
 
     // Re-open a saved design: the full payload lives in the design store, so
     // only the id goes in the URL.
@@ -113,9 +122,10 @@ export default function IndexScreen() {
                         {designs.length === 0 ? (
                             <Text style={styles.emptyText}>{t('noDesigns')}</Text>
                         ) : (
-                            designs.map((design) => {
-                                // Preview the most recently generated image (if any).
-                                const latest = design.images.length > 0 ? design.images[design.images.length - 1] : null;
+                            designs.map((design, idx) => {
+                                // Preview the most recently generated image (if any);
+                                // null while the IDB lookup is in flight or if the record is gone.
+                                const latest = latestUris[idx];
                                 return (
                                     <TouchableOpacity
                                         key={design.id}

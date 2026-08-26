@@ -3,8 +3,10 @@ import { clearDesignHandoff, Design, upsertDesign } from '../services/designStor
 import { normalizePromptForIdeogram } from '../services/IdeogramPrompt';
 import { resolveContradictionInBBox } from '../services/PromptRefiner';
 import { downloadImage } from '../services/imageDownload';
+import { resolveImageRef, saveGeneratedImage } from '../services/imageStore';
 import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
 import { RefinedPrompt, isEmptyElement } from '../types';
+import { useImageUris } from '../useImageUris';
 import { withVisibleElementsOnly } from './canvas';
 import { TranslationKey, useI18n } from '../../i18n';
 
@@ -60,8 +62,11 @@ export function useGeneration(
     rawPrompt: string,
 ) {
     const { t } = useI18n();
-    // All generated image URLs, in generation order.
+    // All generated image refs (random ids into the IndexedDB image store, or
+    // raw URLs for legacy/fallback entries), in generation order.
     const [images, setImages] = useState<string[]>([]);
+    // Refs resolved to displayable URIs, aligned by index with `images`.
+    const imageUris = useImageUris(images);
     // Which generated image is currently shown on the canvas.
     const [viewIndex, setViewIndex] = useState(0);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -200,8 +205,12 @@ export function useGeneration(
             if (!url) {
                 throw new Error(t('noImageUrl'));
             }
+            // Persist the image as base64 in IndexedDB under a fresh random id
+            // (official Ideogram URLs expire). On fetch/CORS/IDB failure this
+            // resolves to the raw URL so the image still displays.
+            const ref = await saveGeneratedImage(url);
             // Append to the history and switch the canvas to the new latest image.
-            setImages((prev) => [...prev, url]);
+            setImages((prev) => [...prev, ref]);
             setViewIndex(images.length);
         } catch (error: any) {
             setGenerateError(error?.message ?? t('generationFailed'));
@@ -236,7 +245,7 @@ export function useGeneration(
     // The image shown on the canvas: the one the user selected in the history
     // strip, defaulting to the most recently generated.
     const shownIndex = images.length === 0 ? -1 : Math.min(viewIndex, images.length - 1);
-    const shownImage = shownIndex >= 0 ? images[shownIndex] : null;
+    const shownImage = shownIndex >= 0 ? imageUris[shownIndex] ?? null : null;
 
     // Show the transient download error; a fresh failure restarts the 5s timer.
     const showDownloadError = (message: string) => {
@@ -249,14 +258,22 @@ export function useGeneration(
     // image there is nothing to save — a transient red toast says so instead.
     const handleDownload = async () => {
         if (isDownloading) return;
-        if (!shownImage) {
+        const ref = shownIndex >= 0 ? images[shownIndex] : null;
+        if (!ref) {
             showDownloadError(t('noImageYet'));
             return;
         }
         setIsDownloading(true);
         setDownloadError(null);
         try {
-            await downloadImage(shownImage, `${designId}.png`);
+            // Resolve the ref (id -> data URI, URL passes through); an id whose
+            // IndexedDB record is gone has nothing to download yet either.
+            const uri = await resolveImageRef(ref);
+            if (!uri) {
+                showDownloadError(t('noImageYet'));
+                return;
+            }
+            await downloadImage(uri, `${designId}.png`);
         } catch (error: any) {
             showDownloadError(error?.message ?? t('downloadFailed'));
         } finally {
@@ -275,6 +292,7 @@ export function useGeneration(
 
     return {
         images,
+        imageUris,
         viewIndex,
         setViewIndex,
         restoreImages,
