@@ -1,10 +1,10 @@
-import { useRouter } from 'expo-router';
-import { Settings as SettingsIcon } from 'lucide-react-native';
+import { Stack, useRouter } from 'expo-router';
+import { ArrowUp, Home as HomeIcon, Images, Settings as SettingsIcon } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import {
-    Image,
-    SafeAreaView,
+    ActivityIndicator,
     ScrollView,
+    SafeAreaView,
     StyleSheet,
     Text,
     TextInput,
@@ -12,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { RecentDesignsWall } from './components/RecentDesignsWall';
 import { SettingsDialog } from './components/SettingsDialog';
 import { useI18n } from '../i18n';
 import { useStartDesign } from './useStartDesign';
@@ -19,6 +20,10 @@ import { useImageUris } from './useImageUris';
 import { Design, loadDesigns, markNavigationFromHome } from './services/designStore';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
+
+// Which home section is active: 'home' leaves the image wall empty (title
+// hidden), 'recent' shows the masonry of saved designs' latest images.
+type HomeSection = 'home' | 'recent';
 
 export default function IndexScreen() {
     const router = useRouter();
@@ -29,13 +34,15 @@ export default function IndexScreen() {
     const [selectedRatio, setSelectedRatio] = useState('4:3');
     const [width, setWidth] = useState('1024');
     const [height, setHeight] = useState('768');
-    // Saved designs shown in the "recent designs" sidebar, most recent first.
+    // Saved designs backing the Recent Designs wall, most recent first.
     const [designs, setDesigns] = useState<Design[]>([]);
     // Settings dialog (opened from the gear icon, top-right of the page).
     const [showSettings, setShowSettings] = useState(false);
+    const [activeSection, setActiveSection] = useState<HomeSection>('home');
 
     // Start Design flow (settings validation → refine with retry → handoff →
-    // navigate); also owns the transient refine-error line.
+    // navigate); also owns the transient refine-error line. Triggered by the
+    // circular arrow button inside the prompt bar.
     const { isLoading, refineError, handleStartDesigning } = useStartDesign({
         prompt, selectedRatio, width, height,
     });
@@ -44,7 +51,7 @@ export default function IndexScreen() {
         setDesigns(loadDesigns());
     }, []);
 
-    // Resolve each card's preview image (IDs into the IndexedDB image store;
+    // Resolve each design's latest image (IDs into the IndexedDB image store;
     // legacy URL entries pass through), aligned by index with `designs`.
     const latestRefs = useMemo(
         () => designs.map((d) => (d.images.length > 0 ? d.images[d.images.length - 1] : null)),
@@ -101,130 +108,143 @@ export default function IndexScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Language switcher (flag), pinned left of the settings gear. */}
-            <LanguageSwitcher style={styles.langButton} />
+        <>
+            <Stack.Screen options={{ headerShown: false }} />
+            <SafeAreaView style={styles.container}>
+                {/* Language switcher (flag), pinned left of the settings gear. */}
+                <LanguageSwitcher style={styles.langButton} />
 
-            {/* Settings gear, pinned to the page's top-right corner. */}
-            <TouchableOpacity
-                style={styles.settingsButton}
-                onPress={() => setShowSettings(true)}
-                testID="settings-gear"
-            >
-                <SettingsIcon color="#007AFF" size={28} />
-            </TouchableOpacity>
+                {/* Settings gear, pinned to the page's top-right corner. */}
+                <TouchableOpacity
+                    style={styles.settingsButton}
+                    onPress={() => setShowSettings(true)}
+                    testID="settings-gear"
+                >
+                    <SettingsIcon color="#007AFF" size={28} />
+                </TouchableOpacity>
 
-            <View style={styles.mainContent}>
-                {/* Left Sidebar: Recent Designs (saved designs, most recent first) */}
-                <View style={styles.leftSidebar}>
-                    <Text style={styles.sidebarTitle}>{t('recentDesigns')}</Text>
-                    <ScrollView style={styles.recentList}>
-                        {designs.length === 0 ? (
-                            <Text style={styles.emptyText}>{t('noDesigns')}</Text>
-                        ) : (
-                            designs.map((design, idx) => {
-                                // Preview the most recently generated image (if any);
-                                // null while the IDB lookup is in flight or if the record is gone.
-                                const latest = latestUris[idx];
-                                return (
+                <View style={styles.mainContent}>
+                    {/* Left sidebar: Home / Recent Designs nav (no logo). */}
+                    <View style={styles.sidebar}>
+                        <TouchableOpacity
+                            style={[styles.navItem, activeSection === 'home' && styles.navItemActive]}
+                            onPress={() => setActiveSection('home')}
+                            testID="nav-home"
+                        >
+                            <HomeIcon size={18} color={activeSection === 'home' ? '#111111' : '#666666'} />
+                            <Text style={[styles.navText, activeSection === 'home' && styles.navTextActive]}>
+                                {t('homeNav')}
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.navItem, activeSection === 'recent' && styles.navItemActive]}
+                            onPress={() => setActiveSection('recent')}
+                            testID="nav-recent-designs"
+                        >
+                            <Images size={18} color={activeSection === 'recent' ? '#111111' : '#666666'} />
+                            <Text style={[styles.navText, activeSection === 'recent' && styles.navTextActive]}>
+                                {t('recentDesigns')}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Main column: centered hero + image wall below it. */}
+                    <ScrollView style={styles.mainScroll}>
+                        <View style={styles.hero}>
+                            <Text style={styles.sectionTitle}>{t('enterDescription')}</Text>
+
+                            {/* Aspect Ratio Selection */}
+                            <View style={styles.ratioRow}>
+                                {PRESET_RATIOS.map((ratio) => (
                                     <TouchableOpacity
-                                        key={design.id}
-                                        style={styles.card}
-                                        onPress={() => handleOpenDesign(design)}
+                                        key={ratio}
+                                        style={[styles.ratioButton, selectedRatio === ratio && styles.ratioButtonActive]}
+                                        onPress={() => setSelectedRatio(ratio)}
                                     >
-                                        {latest && (
-                                            <Image source={{ uri: latest }} style={styles.cardThumb} resizeMode="cover" />
-                                        )}
-                                        <Text numberOfLines={3} style={styles.cardText}>
-                                            {design.prompt.high_level_description}
-                                        </Text>
+                                        <Text style={[styles.ratioText, selectedRatio === ratio && styles.ratioTextActive]}>{ratio}</Text>
                                     </TouchableOpacity>
-                                );
-                            })
-                        )}
+                                ))}
+                                <TouchableOpacity
+                                    style={[styles.ratioButton, selectedRatio === 'custom' && styles.ratioButtonActive]}
+                                    onPress={() => setSelectedRatio('custom')}
+                                >
+                                    <Text style={[styles.ratioText, selectedRatio === 'custom' && styles.ratioTextActive]}>{t('customRatio')}</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Dimensions Row */}
+                            <View style={styles.dimensionRow}>
+                                <View style={styles.dimensionGroup}>
+                                    <Text style={styles.dimensionLabel}>{t('widthLabel')}</Text>
+                                    <TextInput
+                                        style={styles.dimInput}
+                                        keyboardType="numeric"
+                                        value={width}
+                                        onChangeText={handleWidthChange}
+                                        testID="width-input"
+                                    />
+                                </View>
+                                <View style={styles.dimensionGroup}>
+                                    <Text style={styles.dimensionLabel}>{t('heightLabel')}</Text>
+                                    <TextInput
+                                        style={styles.dimInput}
+                                        keyboardType="numeric"
+                                        value={height}
+                                        onChangeText={handleHeightChange}
+                                        testID="height-input"
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Transient refine error (invalid JSON → retrying); auto-dismisses after 5s */}
+                            {refineError && (
+                                <View style={styles.refineErrorRow}>
+                                    <Text style={styles.refineErrorText}>{refineError}</Text>
+                                </View>
+                            )}
+
+                            {/* Prompt bar: rounded capsule input + circular start button */}
+                            <View style={styles.inputBar}>
+                                <TextInput
+                                    style={styles.promptInput}
+                                    placeholder={t('promptPlaceholder')}
+                                    placeholderTextColor="#999999"
+                                    value={prompt}
+                                    onChangeText={setPrompt}
+                                    testID="prompt-input"
+                                />
+                                <TouchableOpacity
+                                    style={[styles.sendButton, isLoading && styles.sendButtonDisabled]}
+                                    onPress={handleStartDesigning}
+                                    disabled={isLoading}
+                                    accessibilityLabel={isLoading ? t('processing') : t('startDesign')}
+                                    testID="start-design-button"
+                                >
+                                    {isLoading
+                                        ? <ActivityIndicator color="#FFFFFF" size="small" />
+                                        : <ArrowUp color="#FFFFFF" size={20} strokeWidth={2.5} />}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Image wall: empty on Home, masonry on Recent Designs. */}
+                        <View style={styles.wallWrap}>
+                            <RecentDesignsWall
+                                active={activeSection === 'recent'}
+                                designs={designs}
+                                uris={latestUris}
+                                titleText={t('recentDesigns')}
+                                emptyText={t('noDesigns')}
+                                onOpen={handleOpenDesign}
+                            />
+                        </View>
                     </ScrollView>
                 </View>
 
-                {/* Right Section: Input Area */}
-                <View style={styles.rightSection}>
-                    <Text style={styles.sectionTitle}>{t('enterDescription')}</Text>
-
-                    {/* Aspect Ratio Selection */}
-                    <View style={styles.selectorContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ratioList}>
-                            {PRESET_RATIOS.map((ratio) => (
-                                <TouchableOpacity
-                                    key={ratio}
-                                    style={[styles.ratioButton, selectedRatio === ratio && styles.ratioButtonActive]}
-                                    onPress={() => setSelectedRatio(ratio)}
-                                >
-                                    <Text style={[styles.ratioText, selectedRatio === ratio && styles.ratioTextActive]}>{ratio}</Text>
-                                </TouchableOpacity>
-                            ))}
-                            <TouchableOpacity
-                                style={[styles.ratioButton, selectedRatio === 'custom' && styles.ratioButtonActive]}
-                                onPress={() => setSelectedRatio('custom')}
-                            >
-                                <Text style={[styles.ratioText, selectedRatio === 'custom' && styles.ratioTextActive]}>{t('customRatio')}</Text>
-                            </TouchableOpacity>
-                        </ScrollView>
-                    </View>
-
-                    {/* Dimensions Row */}
-                    <View style={styles.dimensionRow}>
-                        <View style={styles.dimensionGroup}>
-                            <Text style={styles.dimensionLabel}>{t('widthLabel')}</Text>
-                            <TextInput
-                                style={styles.dimInput}
-                                keyboardType="numeric"
-                                value={width}
-                                onChangeText={handleWidthChange}
-                            />
-                        </View>
-                        <View style={styles.dimensionGroup}>
-                            <Text style={styles.dimensionLabel}>{t('heightLabel')}</Text>
-                            <TextInput
-                                style={styles.dimInput}
-                                keyboardType="numeric"
-                                value={height}
-                                onChangeText={handleHeightChange}
-                            />
-                        </View>
-                    </View>
-
-                    {/* Prompt Input */}
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={styles.textArea}
-                            placeholder="a golden retriever on a skateboard"
-                            placeholderTextColor="#999"
-                            multiline
-                            value={prompt}
-                            onChangeText={setPrompt}
-                        />
-                    </View>
-
-                    {/* Transient refine error (invalid JSON → retrying); auto-dismisses after 5s */}
-                    {refineError && (
-                        <View style={styles.refineErrorRow}>
-                            <Text style={styles.refineErrorText}>{refineError}</Text>
-                        </View>
-                    )}
-
-                    {/* Start Button */}
-                    <TouchableOpacity
-                        style={[styles.button, isLoading && styles.buttonDisabled]}
-                        onPress={handleStartDesigning}
-                        disabled={isLoading}
-                    >
-                        <Text style={styles.buttonText}>{isLoading ? t('processing') : t('startDesign')}</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Settings dialog (LLM + image generation endpoints/credentials) */}
-            {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
-        </SafeAreaView>
+                {/* Settings dialog (LLM + image generation endpoints/credentials) */}
+                {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+            </SafeAreaView>
+        </>
     );
 }
 
@@ -254,63 +274,60 @@ const styles = StyleSheet.create({
         padding: 10,
         zIndex: 10,
     },
-    leftSidebar: {
-        flex: 1,
+    // Left sidebar: nav only, no logo (bordered off the main column).
+    sidebar: {
+        width: 200,
         borderRightWidth: 1,
         borderRightColor: '#EEEEEE',
-        padding: 16,
+        paddingTop: 64,
+        paddingLeft: 12,
+        paddingRight: 12,
     },
-    sidebarTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 16,
-        color: '#333',
-    },
-    recentList: {
-        flex: 1,
-    },
-    card: {
+    navItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F5F5F5',
+        columnGap: 10,
+        height: 40,
+        paddingHorizontal: 12,
         borderRadius: 8,
-        padding: 10,
-        marginBottom: 12,
+        marginBottom: 4,
     },
-    cardThumb: {
-        width: 52,
-        height: 52,
-        borderRadius: 6,
-        marginRight: 10,
-        backgroundColor: '#E5E5E5',
+    navItemActive: {
+        backgroundColor: '#F2F3F5',
     },
-    cardText: {
+    navText: {
+        fontSize: 14,
+        color: '#666666',
+    },
+    navTextActive: {
+        color: '#111111',
+        fontWeight: '600',
+    },
+    mainScroll: {
         flex: 1,
-        fontSize: 13,
-        color: '#666',
     },
-    emptyText: {
-        fontSize: 13,
-        color: '#999',
-        fontStyle: 'italic',
-    },
-    rightSection: {
-        flex: 2,
-        padding: 24,
-        justifyContent: 'space-between',
+    // Centered hero column (title / ratios / dimensions / prompt bar).
+    hero: {
+        width: '100%',
+        maxWidth: 900,
+        alignSelf: 'center',
+        paddingTop: 56,
+        paddingHorizontal: 24,
     },
     sectionTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        marginBottom: 16,
-        color: '#000',
+        fontSize: 34,
+        fontWeight: '600',
+        color: '#111111',
+        textAlign: 'center',
+        marginBottom: 28,
     },
-    selectorContainer: {
-        marginBottom: 20,
-    },
-    ratioList: {
+    ratioRow: {
         flexDirection: 'row',
-        alignItems: 'center',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        columnGap: 8,
+        rowGap: 8,
+        marginBottom: 20,
     },
     ratioButton: {
         paddingHorizontal: 16,
@@ -318,7 +335,6 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         borderWidth: 1,
         borderColor: '#DDD',
-        marginRight: 8,
         backgroundColor: '#FFF',
     },
     ratioButtonActive: {
@@ -335,13 +351,13 @@ const styles = StyleSheet.create({
     },
     dimensionRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
+        columnGap: 48,
         marginBottom: 20,
     },
     dimensionGroup: {
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
     },
     dimensionLabel: {
         fontSize: 14,
@@ -355,20 +371,37 @@ const styles = StyleSheet.create({
         fontSize: 16,
         paddingVertical: 4,
     },
-    inputContainer: {
-        flex: 1,
-        marginBottom: 20,
-    },
-    textArea: {
-        flex: 1,
-        borderColor: '#DDD',
+    // Rounded capsule prompt bar (Ideogram-style) with the circular start
+    // button embedded on the right.
+    inputBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 56,
         borderWidth: 1,
-        borderRadius: 8,
-        padding: 16,
-        fontSize: 18,
-        textAlignVertical: 'top',
+        borderColor: '#DDDDDD',
+        borderRadius: 28,
+        backgroundColor: '#FFFFFF',
+        paddingLeft: 24,
+        paddingRight: 8,
     },
-    // Transient refine error (invalid JSON, retrying) above the start button.
+    promptInput: {
+        flex: 1,
+        fontSize: 16,
+        color: '#111111',
+        paddingVertical: 0,
+    },
+    sendButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#111111',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    sendButtonDisabled: {
+        backgroundColor: '#CCCCCC',
+    },
+    // Transient refine error (invalid JSON, retrying) above the prompt bar.
     refineErrorRow: {
         marginBottom: 12,
         padding: 10,
@@ -381,18 +414,9 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#E53935',
     },
-    button: {
-        backgroundColor: '#007AFF',
-        paddingVertical: 16,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    buttonDisabled: {
-        backgroundColor: '#AAA',
-    },
-    buttonText: {
-        color: '#FFFFFF',
-        fontSize: 18,
-        fontWeight: 'bold',
+    // The wall spans the full main-column width (wider than the hero), like
+    // the reference design; the component adds its own inner padding.
+    wallWrap: {
+        width: '100%',
     },
 });

@@ -72,13 +72,23 @@ async function openDesign(page) {
         // Flags are SVG images (emoji glyphs don't render in every font stack),
         // so assert on the per-locale flag image testID.
         ok(await page.locator('[data-testid="lang-flag-en-US"]').count() === 1, 'switcher shows the US flag by default');
-        ok(await page.getByText('Recent Designs').count() === 1, 'sidebar title English');
-        ok(await page.getByText('No saved designs yet').count() === 1, 'empty placeholder English');
+        ok(await page.getByText('Recent Designs').count() === 1, 'sidebar nav English (home mode: no wall title)');
+        ok(await page.getByText('Home', { exact: true }).count() === 1, 'home nav English');
+        // The empty placeholder lives in the Recent Designs section (the wall).
+        await page.locator('[data-testid="nav-recent-designs"]').click();
+        await page.waitForTimeout(300);
+        ok(await page.getByText('No saved designs yet').count() === 1, 'empty placeholder English (recent mode)');
+        ok(await page.getByText('Recent Designs').count() === 2, 'wall title English (recent mode)');
+        await page.locator('[data-testid="nav-home"]').click();
+        await page.waitForTimeout(300);
         ok(await page.getByText('Enter the description of your dreamed image').count() === 1, 'section title English');
         ok(await page.getByText('Width (W)').count() === 1, 'W label English');
         ok(await page.getByText('Height (H)').count() === 1, 'H label English');
         ok(await page.getByText('custom', { exact: true }).count() === 1, 'custom ratio English');
-        ok(await page.getByText('Start Design', { exact: true }).count() === 1, 'start button English');
+        ok(await page.locator('input[data-testid="prompt-input"]').getAttribute('placeholder') === 'Generate new or upload & edit...',
+            'prompt placeholder English');
+        ok((await page.locator('[data-testid="start-design-button"]').getAttribute('aria-label')) === 'Start Design',
+            'start button label English (aria-label)');
 
         // The switcher is inserted LEFT of the settings gear.
         const fb = await flag.boundingBox();
@@ -188,13 +198,22 @@ async function openDesign(page) {
 
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        ok(await page.getByText('最近的设计').count() === 1, 'sidebar title Chinese');
-        ok(await page.getByText('还没有保存的设计').count() === 1, 'empty placeholder Chinese');
+        ok(await page.getByText('最近的设计').count() === 1, 'sidebar nav Chinese (home mode: no wall title)');
+        ok(await page.getByText('首页', { exact: true }).count() === 1, 'home nav Chinese');
+        // The empty placeholder lives in the Recent Designs section (the wall).
+        await page.locator('[data-testid="nav-recent-designs"]').click();
+        await page.waitForTimeout(300);
+        ok(await page.getByText('还没有保存的设计').count() === 1, 'empty placeholder Chinese (recent mode)');
+        await page.locator('[data-testid="nav-home"]').click();
+        await page.waitForTimeout(300);
         ok(await page.getByText('描述你想要的图片').count() === 1, 'section title Chinese');
         ok(await page.getByText('宽度', { exact: true }).count() === 1, 'W label Chinese');
         ok(await page.getByText('高度', { exact: true }).count() === 1, 'H label Chinese');
         ok(await page.getByText('自定义', { exact: true }).count() === 1, 'custom ratio Chinese');
-        ok(await page.getByText('开始设计', { exact: true }).count() === 1, 'start button Chinese');
+        ok(await page.locator('input[data-testid="prompt-input"]').getAttribute('placeholder') === '生成新图片，或上传并编辑…',
+            'prompt placeholder Chinese');
+        ok((await page.locator('[data-testid="start-design-button"]').getAttribute('aria-label')) === '开始设计',
+            'start button label Chinese (aria-label)');
 
         // Settings dialog save button is 保存设置 (not the design's 保存设计).
         await page.locator('[data-testid="settings-gear"]').click();
@@ -212,8 +231,9 @@ async function openDesign(page) {
         await page.locator('[data-testid="lang-option-en-US"]').click();
         await page.waitForTimeout(400);
         ok(await page.locator('[data-testid="lang-flag-en-US"]').count() === 1, 'switcher back to the US flag');
-        ok(await page.getByText('Recent Designs').count() === 1, 'sidebar title back to English');
-        ok(await page.getByText('Start Design', { exact: true }).count() === 1, 'start button back to English');
+        ok(await page.getByText('Recent Designs').count() === 1, 'sidebar nav back to English');
+        ok((await page.locator('[data-testid="start-design-button"]').getAttribute('aria-label')) === 'Start Design',
+            'start button back to English');
         ok(await page.evaluate(() => localStorage.getItem('drawboard.locale')) === 'en-US',
             'drawboard.locale = en-US in localStorage');
     });

@@ -28,7 +28,7 @@ const PROMPT_WITH_RAW = {
             elements: [{ type: 'obj', bbox: [100, 200, 700, 800], desc: 'A cat riding a bicycle.' }],
         },
     },
-    images: [],
+    images: [`${BASE}/sp-img.png`],
     size: { width: 1024, height: 768 },
     updatedAt: 2000,
     rawPrompt: 'a cat riding a bicycle on the moon',
@@ -43,7 +43,7 @@ const PROMPT_LEGACY = {
             elements: [{ type: 'obj', bbox: [0, 0, 500, 500], desc: 'A cube.' }],
         },
     },
-    images: [],
+    images: [`${BASE}/sp-img-legacy.png`],
     size: { width: 768, height: 768 },
     updatedAt: 1000,
 };
@@ -74,6 +74,13 @@ const FRESH_HANDOFF = {
 
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const PNG = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+    );
+    // The wall only tiles designs that HAVE images: serve the seed images.
+    await page.route('**/sp-img*.png', (route) =>
+        route.fulfill({ contentType: 'image/png', body: PNG }));
 
     // Seed the design store + a fresh-design handoff (single payload object).
     await page.addInitScript((seed) => {
@@ -98,7 +105,10 @@ const FRESH_HANDOFF = {
     await section('S1 saved design (with raw prompt)', async () => {
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        await page.getByText('Cat bicycle design').click();
+        // Open the saved design via the Recent Designs image wall.
+        await page.locator('[data-testid="nav-recent-designs"]').click();
+        await page.waitForTimeout(400);
+        await page.locator('[data-testid="wall-tile-sp-new"]').click();
         await page.waitForTimeout(800);
 
         // Button row: Show Prompt sits right of Download Image.
@@ -134,7 +144,10 @@ const FRESH_HANDOFF = {
     await section('S2 saved design (legacy, no raw prompt)', async () => {
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        await page.getByText('Legacy design no raw prompt').click();
+        // Open the legacy design via the Recent Designs image wall.
+        await page.locator('[data-testid="nav-recent-designs"]').click();
+        await page.waitForTimeout(400);
+        await page.locator('[data-testid="wall-tile-sp-legacy"]').click();
         await page.waitForTimeout(800);
 
         await openShowPrompt();

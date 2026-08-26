@@ -25,9 +25,11 @@ export const LOCALE_NAMES: Record<Locale, string> = {
 
 const enUS = {
     // Home page
+    homeNav: 'Home',
     recentDesigns: 'Recent Designs',
     noDesigns: 'No saved designs yet',
     enterDescription: 'Enter the description of your dreamed image',
+    promptPlaceholder: 'Generate new or upload & edit...',
     widthLabel: 'Width (W)',
     heightLabel: 'Height (H)',
     customRatio: 'custom',
@@ -107,9 +109,11 @@ const enUS = {
 
 const zhCN: Record<keyof typeof enUS, string> = {
     // 首页
+    homeNav: '首页',
     recentDesigns: '最近的设计',
     noDesigns: '还没有保存的设计',
     enterDescription: '描述你想要的图片',
+    promptPlaceholder: '生成新图片，或上传并编辑…',
     widthLabel: '宽度',
     heightLabel: '高度',
     customRatio: '自定义',

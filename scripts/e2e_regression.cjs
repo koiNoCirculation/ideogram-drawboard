@@ -236,16 +236,17 @@ const GREY = 'rgb(204, 204, 204)';
         const { page } = await newPage(browser, {});
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        const w = page.locator('input').nth(0);
-        const h = page.locator('input').nth(1);
+        const w = page.locator('input[data-testid="width-input"]');
+        const h = page.locator('input[data-testid="height-input"]');
 
         // Waits for the W/H inputs to reach the expected values (React's
         // re-render after a ratio click is async; reading too early is flaky).
         const expectWH = async (wv, hv, name) => {
             try {
                 await page.waitForFunction(([ew, eh]) => {
-                    const i = document.querySelectorAll('input');
-                    return i[0] && i[1] && i[0].value === ew && i[1].value === eh;
+                    const wi = document.querySelector('input[data-testid="width-input"]');
+                    const hi = document.querySelector('input[data-testid="height-input"]');
+                    return wi && hi && wi.value === ew && hi.value === eh;
                 }, [wv, hv], { timeout: 2000 });
                 ok(true, name);
             } catch {
@@ -254,8 +255,16 @@ const GREY = 'rgb(204, 204, 204)';
         };
 
         await expectWH('1024', '768', 'default 4:3 -> 1024x768');
-        // Default UI locale is en-US, so the home page renders English chrome.
-        ok(await page.getByText('No saved designs yet').count() === 1, 'empty recent-designs placeholder');
+
+        // Image wall: on Home it is empty by default — no wall title, no
+        // tiles (only the sidebar nav says "Recent Designs"); switching the
+        // sidebar to Recent Designs shows the wall title + empty state.
+        ok(await page.getByText('Recent Designs', { exact: true }).count() === 1, 'home mode: sidebar nav only (no wall title)');
+        ok(await page.locator('[data-testid^="wall-tile-"]').count() === 0, 'home mode: image wall empty');
+        await page.locator('[data-testid="nav-recent-designs"]').click();
+        await page.waitForTimeout(300);
+        ok(await page.getByText('Recent Designs', { exact: true }).count() === 2, 'recent mode: wall title shown');
+        ok(await page.getByText('No saved designs yet').count() === 1, 'recent mode: empty placeholder');
 
         await w.fill('800');
         await expectWH('800', '600', 'W=800 at 4:3 -> H=600');
@@ -277,13 +286,13 @@ const GREY = 'rgb(204, 204, 204)';
         page.on('request', (r) => {
             if (/chat\/completions|api\/chat/.test(r.url())) reqs.push(r.url());
         });
-        await page.getByText('Start Design', { exact: true }).click();
+        await page.locator('[data-testid="start-design-button"]').click();
         await page.waitForTimeout(400);
         ok(!page.url().includes('/design') && reqs.length === 0,
             'empty prompt blocks start (no navigation, no LLM request)');
 
-        await page.locator('textarea').fill('hello world');
-        await page.getByText('Start Design', { exact: true }).click();
+        await page.locator('input[data-testid="prompt-input"]').fill('hello world');
+        await page.locator('[data-testid="start-design-button"]').click();
         await page.waitForTimeout(400);
         ok(!page.url().includes('/design') && reqs.length === 0,
             'missing LLM settings block start (no navigation, no LLM request)');
@@ -296,8 +305,8 @@ const GREY = 'rgb(204, 204, 204)';
         const log = await mockApis(page, { llmContent: JSON.stringify(BASE_PROMPT) });
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        await page.locator('textarea').fill('a test dog');
-        await page.getByText('Start Design', { exact: true }).click();
+        await page.locator('input[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="start-design-button"]').click();
         await page.waitForURL('**/design**', { timeout: 10000 });
         await page.waitForTimeout(700);
 
@@ -1015,8 +1024,8 @@ const GREY = 'rgb(204, 204, 204)';
         await page.close();
     });
 
-    // ================= S14: recent designs + reopen =================
-    await section('S14 recent designs list + reopen', async () => {
+    // ================= S14: recent designs wall + reopen =================
+    await section('S14 recent designs wall + reopen', async () => {
         const designs = [
             {
                 id: 'd1',
@@ -1032,6 +1041,7 @@ const GREY = 'rgb(204, 204, 204)';
                 images: [`${BASE}/regress-img-1.png`, `${BASE}/regress-img-2.png`],
                 size: { width: 800, height: 600 },
                 updatedAt: 2000,
+                rawPrompt: 'raw d1 prompt',
             },
             {
                 id: 'd2',
@@ -1044,6 +1054,7 @@ const GREY = 'rgb(204, 204, 204)';
                 images: [],
                 size: { width: 512, height: 512 },
                 updatedAt: 1000,
+                rawPrompt: 'raw d2 prompt',
             },
         ];
         const { page } = await newPage(browser, { settings: mkSettings(), designs });
@@ -1051,15 +1062,30 @@ const GREY = 'rgb(204, 204, 204)';
             route.fulfill({ contentType: 'image/png', body: PNG }));
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(600);
-        ok(await page.getByText('Reopened design', { exact: true }).count() === 1, 'card shows high_level_description');
-        // d1 has images, d2 does not -> exactly one card thumbnail on the page.
-        ok(await page.locator('img[src*="regress-img-"]').count() === 1, 'card shows a thumbnail only for the design with images');
-        // Newest first: the d1 card text sits above the d2 card text.
-        const r1 = await page.getByText('Reopened design', { exact: true }).boundingBox();
-        const r2 = await page.getByText('Older design without images', { exact: true }).boundingBox();
-        ok(r1 && r2 && r1.y < r2.y, 'newest design listed first');
+        ok(await page.locator('[data-testid^="wall-tile-"]').count() === 0, 'home mode: wall empty');
 
-        await page.getByText('Reopened design', { exact: true }).click();
+        await page.locator('[data-testid="nav-recent-designs"]').click();
+        await page.waitForTimeout(500);
+        ok(await page.getByText('Recent Designs', { exact: true }).count() === 2, 'recent mode: wall title shown');
+        // d1 has images, d2 does not -> exactly one wall tile, showing d1's
+        // LATEST image (regress-img-2).
+        ok(await page.locator('[data-testid="wall-tile-d1"]').count() === 1, 'tile for the design with images');
+        ok(await page.locator('[data-testid="wall-tile-d2"]').count() === 0, 'no tile for the design without images');
+        ok(await page.locator('img[src*="regress-img-2"]').count() === 1, 'tile shows the latest image');
+
+        // Hover the tile -> overlay with the design's ORIGINAL prompt.
+        const tile = page.locator('[data-testid="wall-tile-d1"]');
+        await tile.hover();
+        await page.waitForTimeout(250);
+        ok(await page.getByText('raw d1 prompt', { exact: true }).count() === 1, 'hover overlay shows the original prompt');
+        // Static styles compile to CSS classes (RN-web) — use computed style.
+        ok(await page.locator('[data-testid="wall-tile-overlay"]').count() === 1, 'hover overlay dim layer present');
+        await page.mouse.move(10, 10);
+        await page.waitForTimeout(250);
+        ok(await page.getByText('raw d1 prompt', { exact: true }).count() === 0, 'overlay gone after unhover');
+
+        // Click the tile -> the design opens.
+        await tile.click();
         await page.waitForURL('**/design**', { timeout: 10000 });
         await page.waitForTimeout(800);
         ok(await page.locator('input[placeholder="Untitled Design"]').inputValue() === 'Reopened design',

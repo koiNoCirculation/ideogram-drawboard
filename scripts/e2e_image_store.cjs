@@ -233,8 +233,8 @@ const canvasImgSrc = (page) =>
         await p.close();
     });
 
-    // ---------- S6: home cards resolve mixed refs ----------
-    await section('S6 home cards', async () => {
+    // ---------- S6: home wall resolves mixed refs ----------
+    await section('S6 home wall', async () => {
         const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
         const designs = [
             { id: 'idb-design', prompt: PROMPT, images: [SEED_IDB_ID], size: { width: 800, height: 600 }, updatedAt: 3000 },
@@ -247,9 +247,15 @@ const canvasImgSrc = (page) =>
             designs,
             idbRecords: [{ id: SEED_IDB_ID, uri: DATA_URI, createdAt: 1 }],
         });
-        ok(await p.locator(`img[src="${DATA_URI}"]`).count() === 1, 'IDB-backed card thumbnail is the data URI');
-        ok(await p.locator('img[src*="legacy-img"]').count() === 1, 'legacy card thumbnail keeps its URL');
-        ok(await p.locator('img').count() === 2, 'image-less design shows no thumbnail');
+        // The wall only renders in the Recent Designs section.
+        await p.locator('[data-testid="nav-recent-designs"]').click();
+        await p.waitForTimeout(600);
+        ok(await p.locator('[data-testid="wall-tile-idb-design"] img').getAttribute('src') === DATA_URI,
+            'IDB-backed wall tile shows the data URI');
+        ok(await p.locator('[data-testid="wall-tile-legacy-design"] img').getAttribute('src') === LEGACY_URL,
+            'legacy wall tile keeps its URL');
+        ok(await p.locator('[data-testid="wall-tile-noimg-design"]').count() === 0,
+            'image-less design gets no wall tile');
         await p.close();
     });
 
