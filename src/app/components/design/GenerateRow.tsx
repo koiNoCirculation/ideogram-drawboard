@@ -1,22 +1,26 @@
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
 
-/** Save + Generate buttons (with the "Saved ✓" confirmation) and the error line. */
+/** Save + Generate + Download Image buttons (with the "Saved ✓" confirmation) and the error line. */
 export const GenerateRow = ({
     dataMissing,
     isGenerating,
+    isDownloading,
     showSaved,
     generateError,
     onSave,
     onGenerate,
+    onDownload,
 }: {
-    /** True when there is no refinedData — Save/Generate are disabled. */
+    /** True when there is no refinedData — Save/Generate/Download are disabled. */
     dataMissing: boolean;
     isGenerating: boolean;
+    isDownloading: boolean;
     showSaved: boolean;
     generateError: string | null;
     onSave: () => void;
     onGenerate: () => void;
+    onDownload: () => void;
 }) => (
     <>
         <View style={styles.generateRow}>
@@ -36,6 +40,18 @@ export const GenerateRow = ({
                     <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                     <Text style={styles.generateButtonText}>Generate</Text>
+                )}
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[styles.generateButton, dataMissing && styles.generateButtonDisabled]}
+                onPress={onDownload}
+                disabled={dataMissing || isDownloading}
+                testID="download-image-button"
+            >
+                {isDownloading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                    <Text style={styles.generateButtonText}>Download Image</Text>
                 )}
             </TouchableOpacity>
             {showSaved && <Text style={styles.savedText}>Saved ✓</Text>}

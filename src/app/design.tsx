@@ -334,10 +334,12 @@ export default function DesignScreen() {
                         onView={generation.setViewIndex}
                         dataMissing={!refinedData}
                         isGenerating={generation.isGenerating}
+                        isDownloading={generation.isDownloading}
                         showSaved={generation.showSaved}
                         generateError={generation.generateError}
                         onSave={generation.handleSave}
                         onGenerate={generation.handleGenerate}
+                        onDownload={generation.handleDownload}
                     />
                 </View>
             </View>
@@ -377,6 +379,16 @@ export default function DesignScreen() {
                     onSave={editing.saveEdit}
                     onClose={() => editing.setEditing(null)}
                 />
+            )}
+
+            {/* Transient red floating toast for download failures (e.g. no
+                image generated yet); auto-dismisses after 5s. */}
+            {generation.downloadError && (
+                <View style={styles.downloadErrorToast} pointerEvents="none">
+                    <View style={styles.downloadErrorToastBox} testID="download-error">
+                        <Text style={styles.downloadErrorText}>{generation.downloadError}</Text>
+                    </View>
+                </View>
             )}
 
             {/* Settings dialog (LLM + image generation endpoints/credentials) */}

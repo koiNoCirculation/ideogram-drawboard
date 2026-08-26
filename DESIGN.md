@@ -33,13 +33,14 @@ src/app/
       Toolbar.tsx        左侧工具栏（添加文字/对象 + 撤销/重做）
       MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
       HistoryStrip.tsx   生成图缩略图横条
-      GenerateRow.tsx    Save + Generate 按钮行（保存成功提示、错误行）
+      GenerateRow.tsx    Save + Generate + Download Image 按钮行（保存成功提示、错误行）
       ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
       HeaderBackButton.tsx  Stack 页头返回按钮（design 标题左侧，headerLeft 注入；刷新后仍可用，见「页面与导航」节）
       EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
   services/
     PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
     IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
+    imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
     settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
     designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ 返回首页导航标志 + newDesignId
     color.ts             hex/RGB/HSV 互转与 clamp 工具
@@ -201,6 +202,12 @@ Photoshop 风格图层列表，绝对定位于画布区右下角（距边缘 12p
 4. **规范化**：`withVisibleElementsOnly`（剔除隐藏元素，见「图层列表」节）+ `normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
 5. **请求与结果**：POST 到设置中的图像生成端点（`getImageUrl`，Official = 官方 API、Custom = 本地/私有化端点）+ 路径 `/v1/ideogram-v4/generate`，密钥非空时带 `Api-Key` 头；取 `data[0].url` 追加进 `images` 并把画布切到新图；失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。
 
+### 下载图片（Download Image）
+Save/Generate 行中 Generate 右侧的按钮，下载**画布当前选中**的那张生成图（历史条选中的缩略图，默认最新一张）：
+- 有选中图 → `downloadImage`（services/imageDownload.ts）fetch 该 URL → blob → 临时 `<a download>`（文件名 `{designId}.png`）点击触发浏览器保存窗口；下载中按钮显示 ActivityIndicator 并禁用；fetch 失败同样走红悬浮提示。
+- 还没有任何生成图（首页重写后未生成、或历史设计无图）→ 按钮仍可用，点击弹**红色悬浮提示**（视口顶部居中、Stack 页头下方，`pointerEvents` 关闭）「No image has been generated yet — generate one first, then download.」，**5 秒后自动消失**（新的失败重新计时）。
+- `refinedData` 缺失时与 Save/Generate 一样禁用。
+
 ### 保存（Save）
 `normalizePromptForIdeogram(refinedData)` + 当前 `images` + 画布尺寸 + `Date.now()` → `upsertDesign` 写 localStorage；元素上的 `visible` 键原样保留（隐藏状态重开时恢复，见「图层列表」节）；按钮旁显示「Saved ✓」1.8s。Save/Generate 在 `refinedData` 缺失时禁用。
 
@@ -253,4 +260,5 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 - `settings.spec.ts`：纯函数单测——厂商/自建后端端点解析、自建默认地址、官方/本地图像 URL、active profile 解析、各项缺失判定（LLM key 仅自建后端可空、图像 key 仅 Custom 可空）、per-provider profile 互不干扰、无 localStorage 时的默认值。
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
 - `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）。
+- `imageDownload.spec.ts`：纯函数单测（stub fetch/document/URL object-URL）——成功时以正确文件名经 `<a download>` 点击触发下载；fetch 失败时抛错且不动 DOM。
 - UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）

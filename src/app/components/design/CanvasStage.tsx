@@ -52,10 +52,12 @@ export const CanvasStage = ({
     onView,
     dataMissing,
     isGenerating,
+    isDownloading,
     showSaved,
     generateError,
     onSave,
     onGenerate,
+    onDownload,
 }: {
     showGrid: boolean;
     showElements: boolean;
@@ -90,10 +92,12 @@ export const CanvasStage = ({
     onView: (index: number) => void;
     dataMissing: boolean;
     isGenerating: boolean;
+    isDownloading: boolean;
     showSaved: boolean;
     generateError: string | null;
     onSave: () => void;
     onGenerate: () => void;
+    onDownload: () => void;
 }) => (
     <View style={styles.canvasContainer}>
         {/* "Show grid" / "Show elements" toggles, pinned to the
@@ -359,10 +363,12 @@ export const CanvasStage = ({
         <GenerateRow
             dataMissing={dataMissing}
             isGenerating={isGenerating}
+            isDownloading={isDownloading}
             showSaved={showSaved}
             generateError={generateError}
             onSave={onSave}
             onGenerate={onGenerate}
+            onDownload={onDownload}
         />
     </View>
 );

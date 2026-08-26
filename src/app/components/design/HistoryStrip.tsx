@@ -28,6 +28,7 @@ export const HistoryStrip = ({
                         key={`hist-${i}`}
                         onPress={() => onView(i)}
                         activeOpacity={0.8}
+                        testID={`history-thumb-${i}`}
                     >
                         <Image
                             source={{ uri: url }}

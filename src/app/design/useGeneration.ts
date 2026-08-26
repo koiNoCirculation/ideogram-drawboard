@@ -2,6 +2,7 @@ import { Dispatch, RefObject, SetStateAction, useEffect, useRef, useState } from
 import { clearDesignHandoff, Design, upsertDesign } from '../services/designStore';
 import { normalizePromptForIdeogram } from '../services/IdeogramPrompt';
 import { resolveContradictionInBBox } from '../services/PromptRefiner';
+import { downloadImage } from '../services/imageDownload';
 import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
 import { RefinedPrompt, isEmptyElement } from '../types';
 import { withVisibleElementsOnly } from './canvas';
@@ -65,13 +66,20 @@ export function useGeneration(
     const [flashOn, setFlashOn] = useState(false);
     // Brief "Saved" confirmation shown after a successful save.
     const [showSaved, setShowSaved] = useState(false);
+    // Downloading the current image (blob fetch in flight).
+    const [isDownloading, setIsDownloading] = useState(false);
+    // Transient red floating error (e.g. no image generated yet);
+    // auto-dismisses after 5s.
+    const [downloadError, setDownloadError] = useState<string | null>(null);
     const flashTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const downloadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Clean up timers if the screen unmounts mid-blink / mid-save-flash.
     useEffect(() => () => {
         if (flashTimerRef.current) clearInterval(flashTimerRef.current);
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        if (downloadErrorTimerRef.current) clearTimeout(downloadErrorTimerRef.current);
     }, []);
 
     // Blink the empty-element highlight for a few cycles, then settle on a
@@ -219,6 +227,32 @@ export function useGeneration(
     const shownIndex = images.length === 0 ? -1 : Math.min(viewIndex, images.length - 1);
     const shownImage = shownIndex >= 0 ? images[shownIndex] : null;
 
+    // Show the transient download error; a fresh failure restarts the 5s timer.
+    const showDownloadError = (message: string) => {
+        setDownloadError(message);
+        if (downloadErrorTimerRef.current) clearTimeout(downloadErrorTimerRef.current);
+        downloadErrorTimerRef.current = setTimeout(() => setDownloadError(null), 5000);
+    };
+
+    // Download the image currently shown on the canvas. Without a generated
+    // image there is nothing to save — a transient red toast says so instead.
+    const handleDownload = async () => {
+        if (isDownloading) return;
+        if (!shownImage) {
+            showDownloadError('No image has been generated yet — generate one first, then download.');
+            return;
+        }
+        setIsDownloading(true);
+        setDownloadError(null);
+        try {
+            await downloadImage(shownImage, `${designId}.png`);
+        } catch (error: any) {
+            showDownloadError(error?.message ?? 'Download failed');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     // When re-opening a saved design, restore its generated image history and
     // show the latest one on the canvas.
     const restoreImages = (imgs: string[]) => {
@@ -240,6 +274,9 @@ export function useGeneration(
         showEmptyHighlight,
         flashOn,
         showSaved,
+        isDownloading,
+        downloadError,
+        handleDownload,
         handleGenerate,
         handleSave,
     };
