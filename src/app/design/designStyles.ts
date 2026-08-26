@@ -227,23 +227,37 @@ export const styles = StyleSheet.create({
         color: '#333333',
         textAlign: 'center',
     },
+    // Constrained-width row so the four buttons below can split it evenly
+    // (flex: 1 each). On wide screens the row caps at 720px and the parent
+    // centers it; on narrow windows it takes the full width instead.
     generateRow: {
         marginTop: 16,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
+        width: '100%',
+        maxWidth: 720,
     },
     generateButton: {
+        // flex: 1 + border-box sizing makes all four row buttons exactly the
+        // same width regardless of label length or locale (the fixed height
+        // keeps them the same height too, spinner or text).
+        flex: 1,
+        height: 40,
+        boxSizing: 'border-box',
         backgroundColor: '#007AFF',
+        // 1px border matching the background (invisible). Chrome's flexbox
+        // adds borders on top of the 0% flex-basis when sizing, so every row
+        // button must carry the SAME border to keep widths exactly equal.
+        borderWidth: 1,
+        borderColor: '#007AFF',
         borderRadius: 8,
-        paddingHorizontal: 24,
-        paddingVertical: 10,
-        minWidth: 120,
         alignItems: 'center',
         justifyContent: 'center',
     },
     generateButtonDisabled: {
         backgroundColor: '#B0D4FF',
+        borderColor: '#B0D4FF',
     },
     // Download Image, shown to the right of Generate: same gap as Save→Generate
     // (saveButton's marginRight: 12).
@@ -259,15 +273,17 @@ export const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
     },
-    // Secondary Save button, shown to the left of Generate.
+    // Secondary Save button, shown to the left of Generate. Same flex: 1 /
+    // height / border-box as generateButton so it measures identically even
+    // though only it carries a border.
     saveButton: {
+        flex: 1,
+        height: 40,
+        boxSizing: 'border-box',
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#007AFF',
-        paddingHorizontal: 24,
-        paddingVertical: 10,
         marginRight: 12,
-        minWidth: 96,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#FFFFFF',

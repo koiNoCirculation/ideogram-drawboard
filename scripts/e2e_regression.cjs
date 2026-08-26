@@ -825,6 +825,19 @@ const GREY = 'rgb(204, 204, 204)';
         const log = await mockApis(page, { llmContent: REWRITTEN_VLLM });
         await openDesign(page, BASE_PROMPT, '1024,768');
         await page.waitForTimeout(700);
+
+        // The four bottom buttons must be exactly the same size no matter the
+        // label lengths (flex: 1 each in a maxWidth-constrained row).
+        const btnIds = ['save-button', 'generate-button', 'download-image-button', 'show-prompt-button'];
+        const btnBoxes = [];
+        for (const id of btnIds) btnBoxes.push(await page.locator(`[data-testid="${id}"]`).boundingBox());
+        ok(btnBoxes.every((b) => !!b), 'all four bottom buttons are visible');
+        const bw0 = btnBoxes[0]?.width ?? 0;
+        ok(btnBoxes.every((b) => Math.abs(b.width - bw0) < 1),
+            `four buttons equal width (${btnBoxes.map((b) => b.width.toFixed(1)).join(' / ')})`);
+        const bh0 = btnBoxes[0]?.height ?? 0;
+        ok(btnBoxes.every((b) => Math.abs(b.height - bh0) < 1), 'four buttons equal height');
+
         const generate = async () => {
             await page.getByText('Generate', { exact: true }).first().click();
             await page.waitForTimeout(700);

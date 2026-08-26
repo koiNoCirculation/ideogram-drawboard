@@ -239,6 +239,8 @@ Save/Generate 行中 Download Image 右侧的按钮（12px 间距），点击弹
 - `refinedData` 缺失时与 Save/Generate 一样禁用。
 - `rawPrompt` 的来源：首页「开始设计」时随 handoff 暂存（`useStartDesign`），Save 时随设计一起 `upsertDesign` 持久化（见「数据模型」节）；设计页加载时按 handoff 优先、否则读 store 恢复。
 
+**Save/Generate 行布局（四按钮恒等宽）**：一行四个按钮（Save / Generate / Download Image / Show Prompt，间距 12px）无论标签长短/语言都等宽等高——行容器 `width:100% + maxWidth:720`（宽屏时行宽固定 720 并由父容器 `alignItems:center` 居中，窄屏占满可用宽度）；每个按钮 `flex:1 + height:40 + boxSizing:border-box`（固定高度保证生成/下载中显示 ActivityIndicator 时高度也不变）。注意 Chrome flexbox 对 `flex-basis:0%` 的尺寸计算会把 border 加回外层尺寸（border-box 下也不均分，纯 CSS 可复现），所以**四个按钮都带 1px 边框**——蓝底按钮用同色 `#007AFF` 边框（不可见），禁用态边框随背景变 `#B0D4FF`，Save 保持其原有可见蓝边框。"Saved ✓" 提示出现时四个按钮整体略收窄但仍彼此等宽。
+
 ### 保存（Save）
 `normalizePromptForIdeogram(refinedData)` + 当前 `images` + 画布尺寸 + `rawPrompt` + `Date.now()` → `upsertDesign` 写 localStorage；元素上的 `visible` 键原样保留（隐藏状态重开时恢复，见「图层列表」节）；按钮旁显示「Saved ✓」1.8s。Save/Generate 在 `refinedData` 缺失时禁用。
 

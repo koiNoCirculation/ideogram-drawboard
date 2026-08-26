@@ -151,6 +151,13 @@ async function openDesign(page) {
         ok(await page.locator('[data-testid="save-button"]').innerText() === '保存设计', 'Save button Chinese');
         ok(await page.locator('[data-testid="generate-button"]').innerText() === '生成图片', 'Generate button Chinese');
         ok(await page.locator('[data-testid="download-image-button"]').innerText() === '下载图片', 'Download button Chinese');
+        // The four bottom buttons stay equal-width even though the zh labels
+        // differ in length (保存设计 / 生成图片 / 下载图片 / 显示 Prompt).
+        const btnIds = ['save-button', 'generate-button', 'download-image-button', 'show-prompt-button'];
+        const btnW = [];
+        for (const id of btnIds) btnW.push((await page.locator(`[data-testid="${id}"]`).boundingBox()).width);
+        ok(btnW.every((w) => Math.abs(w - btnW[0]) < 1),
+            `four buttons equal width in zh (${btnW.map((w) => w.toFixed(1)).join(' / ')})`);
         // Data-driven content is still untouched.
         ok(await page.getByText('A golden retriever sitting in the center.').count() >= 1, 'element desc still NOT translated');
         ok(await page.getByText('HELLO').count() >= 1, 'element text still NOT translated');
