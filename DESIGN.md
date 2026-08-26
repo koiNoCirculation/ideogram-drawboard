@@ -35,6 +35,7 @@ src/app/
       HistoryStrip.tsx   生成图缩略图横条
       GenerateRow.tsx    Save + Generate 按钮行（保存成功提示、错误行）
       ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
+      HeaderBackButton.tsx  Stack 页头返回按钮（design 标题左侧，headerLeft 注入；刷新后仍可用，见「页面与导航」节）
       EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
   services/
     PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
@@ -101,7 +102,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 首页「开始设计」→ 生成新设计 id（`newDesignId`）→ `setDesignHandoff(id, { promptData, size })` 把 LLM 结果与画布尺寸暂存到 localStorage（key `drawboard.handoff`，按 id 的映射，上限 10 条、超了逐出最旧）→ `router.push('/design', { id })`。handoff 读时不消费，未保存设计的刷新/前进后退仍能解析；Save 成功时 `clearDesignHandoff(id)`（store 成为唯一事实来源，避免重开时读到编辑前的旧 payload）。
 - 首页点最近设计卡片 → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
 - 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
-- 设计页页头有显式返回按钮（左侧，ChevronLeft，与齿轮按钮同尺寸）：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在），点击做**原生** `window.history.back()` 返回上一页——刷新后路由的 navigation state 只按当前 URL 重建，`router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
+- 设计页的返回按钮在 **Stack 页头**（"design" 标题左侧），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
 
 ## index.tsx（首页）
 
@@ -125,7 +126,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 ### 初始化
 - `designId`：首页导航恒带 `id`（新设计由首页生成、重开设计复用原 id）；裸访问 /design 无 id 时现场生成（无数据，显示占位）。
 - 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；store 里的 `images` → 图片历史，`viewIndex` 指向最新一张。
-- 页头：左侧返回按钮（行为见「页面与导航」节）+ 可编辑标题 + 右侧设置齿轮按钮（打开设置对话框，见「设置」节）。
+- 页头：可编辑标题 + 右侧设置齿轮按钮（打开设置对话框，见「设置」节）。返回按钮在 Stack 页头"design" 标题左侧（见「页面与导航」节）。
 
 ### 元数据栏（六个部分，各 ≤20% 宽度，内部换行）
 一行六个部分：Aesthetics / Lighting / Art Style / Photo / Medium / Palette。

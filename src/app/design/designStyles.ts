@@ -53,11 +53,6 @@ export const styles = StyleSheet.create({
         padding: 10,
         marginLeft: 12,
     },
-    // Back arrow in the header's top-left corner (matches toolbar icon size).
-    backButton: {
-        padding: 10,
-        marginRight: 12,
-    },
     metadataContainer: {
         flexDirection: 'row',
         alignItems: 'flex-start',

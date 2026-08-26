@@ -15,3 +15,10 @@ from front page index.tsx, click any historical design or generate a new design,
   - 无标志（裸 /design、新标签、外部跳转）→ `router.replace('/')` 去首页。
 - 新增 `src/test/services/designStore.spec.ts`（3 个用例：默认无标志 / 置位保持 / sessionStorage 缺失安全）；`npm test` 27 通过。
 - e2e（Playwright 对运行中的 `expo start --web`，临时脚本 `temp/e2e_back_button.cjs`，不入库）：首页点历史设计 → design 页 → 刷新 → 返回按钮可见 → 点击回首页；裸 /design 新标签 → 点击返回去首页。4 项全过。
+
+## 跟进（同日）：按钮位置
+
+反馈：返回按钮不该在页面内标题栏（与 Stack 页头自带的返回键重复），应在 Stack 页头 "design" 标题左侧。
+
+- 移除页面内标题栏的按钮；改为 `src/app/components/design/HeaderBackButton.tsx`（组件化，用 expo-router 命令式 `router`，无 hook），由 design.tsx `Stack.Screen options={{ headerLeft }}` 注入——默认页头返回键在刷新后（navigation state 重建为单 route）不渲染，自定义 headerLeft 保证刷新后仍显示。
+- e2e 复跑 4 项全过；截图确认页面上仅 1 个返回按钮（导航后与刷新后均同）。
