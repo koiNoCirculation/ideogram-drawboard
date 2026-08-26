@@ -85,6 +85,13 @@ async function openDesign(page) {
         const gb = await page.locator('[data-testid="settings-gear"]').boundingBox();
         ok(fb && gb && fb.x + fb.width <= gb.x + 2, `switcher sits left of the gear (gap ${gb.x - (fb.x + fb.width)})`);
 
+        // Settings dialog save button uses its own label (not the design's "Save").
+        await page.locator('[data-testid="settings-gear"]').click();
+        await page.waitForTimeout(200);
+        ok(await page.locator('[data-testid="settings-save"]').innerText() === 'Save Settings', 'settings Save button English');
+        await page.getByText('Cancel', { exact: true }).click();
+        await page.waitForTimeout(150);
+
         // Dropdown lists both locales.
         await flag.click();
         await page.waitForTimeout(200);
@@ -181,6 +188,13 @@ async function openDesign(page) {
         ok(await page.getByText('高度', { exact: true }).count() === 1, 'H label Chinese');
         ok(await page.getByText('自定义', { exact: true }).count() === 1, 'custom ratio Chinese');
         ok(await page.getByText('开始设计', { exact: true }).count() === 1, 'start button Chinese');
+
+        // Settings dialog save button is 保存设置 (not the design's 保存设计).
+        await page.locator('[data-testid="settings-gear"]').click();
+        await page.waitForTimeout(200);
+        ok(await page.locator('[data-testid="settings-save"]').innerText() === '保存设置', 'settings Save button Chinese (保存设置)');
+        await page.getByText('取消', { exact: true }).click();
+        await page.waitForTimeout(150);
         await page.screenshot({ path: path.join(TEMP, 'shot_i18n_zh_home.png') });
     });
 

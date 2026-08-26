@@ -200,7 +200,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                         <Text style={styles.cancelText}>{t('cancel')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.saveButton} onPress={handleSave} testID="settings-save">
-                        <Text style={styles.saveText}>{t('save')}</Text>
+                        <Text style={styles.saveText}>{t('saveSettings')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>

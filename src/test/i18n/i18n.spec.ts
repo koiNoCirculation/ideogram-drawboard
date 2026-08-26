@@ -83,6 +83,7 @@ describe('translate', () => {
         expect(translate('en-US', 'showPrompt')).toBe('Show Prompt');
         expect(translate('en-US', 'originalPrompt')).toBe('Original Prompt');
         expect(translate('en-US', 'enhancedPrompt')).toBe('Structured Prompt');
+        expect(translate('en-US', 'saveSettings')).toBe('Save Settings');
     });
 
     it('returns the required Chinese strings', () => {
@@ -107,6 +108,7 @@ describe('translate', () => {
         expect(translate('zh-CN', 'showPrompt')).toBe('显示 Prompt');
         expect(translate('zh-CN', 'originalPrompt')).toBe('原始 Prompt');
         expect(translate('zh-CN', 'enhancedPrompt')).toBe('结构化 Prompt');
+        expect(translate('zh-CN', 'saveSettings')).toBe('保存设置');
     });
 
     it('substitutes {placeholder} variables', () => {

@@ -80,6 +80,7 @@ const enUS = {
     remove: 'Remove',
     // Settings dialog
     settingsTitle: 'Settings',
+    saveSettings: 'Save Settings',
     llmSection: 'Large language model',
     llmProvider: 'LLM provider',
     llmEndpoint: 'LLM endpoint',
@@ -161,6 +162,7 @@ const zhCN: Record<keyof typeof enUS, string> = {
     remove: '移除',
     // 设置对话框
     settingsTitle: '设置',
+    saveSettings: '保存设置',
     llmSection: '大语言模型',
     llmProvider: 'LLM 提供商',
     llmEndpoint: 'LLM 端点',

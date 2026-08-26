@@ -117,7 +117,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - **`src/i18n/`**：`translations.ts` 双语词表——`enUS` 为基准（~60 个 key），`zhCN` 类型是 `Record<keyof typeof enUS, string>`，编译期强制 key 对齐、不许缺值；另导出 `Locale`（`'en-US' | 'zh-CN'`）、`LOCALES`、`DEFAULT_LOCALE = 'en-US'`、`LOCALE_STORAGE_KEY = 'drawboard.locale'`、`LOCALE_FLAGS`（🇺🇸 / 🇨🇳）。`I18nContext.tsx`：`I18nProvider`（根布局 `_layout.tsx` 包裹 Stack）+ `useI18n()`（`locale` / `setLocale` / `t`）；`t(key, vars?)` 做 `{name}` 占位替换，未知 key 原样透传（不崩）。
 - **locale 持久化**：选择写 `localStorage['drawboard.locale']`，刷新/重开保持；`loadLocale` 读非法值（或无存储）回退 `en-US`。
 - **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗按钮（flag-emoji 风格内联 SVG data-URI，按钮 testID `lang-switcher`、旗帜本体 `lang-flag-<locale>`；不用区域指示符 emoji——缺字体时渲染成 "US"/"CN" 字母，且 RN-web `<Image>` 对该 data-URI 不出图，故用带 CSS background 的普通 View，同画布网格机制），点击开下拉（两个选项各带小国旗 + 语言自称文案——`LOCALE_NAMES`：en-US → "English"、zh-CN → "中文"，自称不随当前 locale 变化；testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
-- **覆盖**：首页（侧栏标题/占位、输入区标题、W/H/自定义、开始设计/处理中、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
+- **覆盖**：首页（侧栏标题/占位、输入区标题、W/H/自定义、开始设计/处理中、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签与按钮——设置对话框的保存按钮用独立 key `saveSettings`（en "Save Settings" / zh "保存设置"，不与设计页 Save 的 `save`（zh "保存设计"）混用）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
 
 ## 页面与导航
 
