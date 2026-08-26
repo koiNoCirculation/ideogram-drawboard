@@ -1,6 +1,7 @@
 import {
     DEFAULT_LOCALE,
     LOCALE_FLAGS,
+    LOCALE_NAMES,
     LOCALES,
     LOCALE_STORAGE_KEY,
     TranslationKey,
@@ -123,6 +124,14 @@ describe('translate', () => {
                 expect(translations[locale][key].trim().length).toBeGreaterThan(0);
             }
             expect(LOCALE_FLAGS[locale]).toBeDefined();
+        }
+    });
+
+    it('labels every locale with its endonym in the switcher', () => {
+        expect(LOCALE_NAMES['en-US']).toBe('English');
+        expect(LOCALE_NAMES['zh-CN']).toBe('中文');
+        for (const locale of LOCALES) {
+            expect(LOCALE_NAMES[locale].trim().length).toBeGreaterThan(0);
         }
     });
 });

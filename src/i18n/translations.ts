@@ -15,6 +15,14 @@ export const LOCALE_FLAGS: Record<Locale, string> = {
     'zh-CN': '🇨🇳',
 };
 
+// Endonym shown for each locale in the switcher dropdown — every language is
+// written in its own name (standard language-switcher convention), so this is
+// UI chrome that does NOT vary with the active locale.
+export const LOCALE_NAMES: Record<Locale, string> = {
+    'en-US': 'English',
+    'zh-CN': '中文',
+};
+
 const enUS = {
     // Home page
     recentDesigns: 'Recent Designs',

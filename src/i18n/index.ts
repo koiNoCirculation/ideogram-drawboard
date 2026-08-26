@@ -2,6 +2,7 @@ export {
     DEFAULT_LOCALE,
     LOCALES,
     LOCALE_FLAGS,
+    LOCALE_NAMES,
     LOCALE_STORAGE_KEY,
     translations,
 } from './translations';

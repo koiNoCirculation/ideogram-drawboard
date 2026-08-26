@@ -91,6 +91,9 @@ async function openDesign(page) {
         ok(await page.locator('[data-testid="lang-option-en-US"]').count() === 1
             && await page.locator('[data-testid="lang-option-zh-CN"]').count() === 1,
             'dropdown offers en-US and zh-CN');
+        ok(await page.locator('[data-testid="lang-option-en-US"]').innerText() === 'English'
+            && await page.locator('[data-testid="lang-option-zh-CN"]').innerText() === '中文',
+            'options labeled with endonyms (English / 中文)');
         await page.mouse.click(10, 400); // close via backdrop
         await page.waitForTimeout(150);
     });

@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { LOCALES, Locale } from '../../i18n';
+import { LOCALES, LOCALE_NAMES, Locale } from '../../i18n';
 import { useI18n } from '../../i18n';
 
 const MENU_W = 110;
@@ -137,7 +137,7 @@ export const LanguageSwitcher = ({ style }: { style?: any }) => {
                                         <View
                                             style={[styles.optionFlagImage, flagBackground(FLAG_URIS[l])]}
                                         />
-                                        <Text style={[styles.optionText, l === locale && styles.optionTextActive]}>{l}</Text>
+                                        <Text style={[styles.optionText, l === locale && styles.optionTextActive]}>{LOCALE_NAMES[l]}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>

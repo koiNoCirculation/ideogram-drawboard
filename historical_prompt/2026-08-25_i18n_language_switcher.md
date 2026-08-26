@@ -82,3 +82,11 @@
 菜单选项各带小旗）；e2e_i18n.cjs 四处国旗断言改 testID 计数；DESIGN.md
 i18n 节同步。验证：npm test 38/38、e2e_i18n 55/55、e2e_regression 153/153、
 tsc 干净、截图确认两面旗帜可见（temp/flag_button.png / flag_menu.png）。
+
+## 后续：下拉选项文案改为语言自称（2026-08-25）
+
+要求：下拉里的 "en-US" / "zh-CN" 显示为 "English" / "中文"。
+实现：`LOCALE_NAMES`（translations.ts，与 LOCALE_FLAGS 并列；每个语言用
+自身名称书写，属 UI chrome，不随当前 locale 变化）；LanguageSwitcher 选项
+文案改用 `LOCALE_NAMES[l]`。单测新增 endonym 断言；e2e S1 断言选项文本
+English/中文。验证：npm test 39/39、e2e_i18n 56/56、e2e_regression 153/153、tsc 干净。
