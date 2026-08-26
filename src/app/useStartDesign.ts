@@ -65,6 +65,9 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
             setDesignHandoff(id, {
                 promptData: refinedPrompt,
                 size: { width: parseInt(width, 10) || 0, height: parseInt(height, 10) || 0 },
+                // Keep the user's original prompt so the design page's Show
+                // Prompt dialog can display it next to the refined JSON.
+                rawPrompt: prompt,
             });
             markNavigationFromHome();
             router.push({ pathname: '/design', params: { id } });

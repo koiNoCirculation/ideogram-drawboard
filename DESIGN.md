@@ -18,7 +18,7 @@ src/
     index.tsx              首页：输入描述、选比例/尺寸，最近设计列表
     design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
     types.ts               RefinedPrompt / CanvasElement / isEmptyElement
-    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff→跳转；瞬态错误行）
+    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff（含原始 prompt）→跳转；瞬态错误行）
     design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
       constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
       canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides / withVisibleElementsOnly（生成前剔除隐藏元素）
@@ -40,16 +40,17 @@ src/
         Toolbar.tsx        左侧工具栏（添加文字/对象 + 撤销/重做）
         MetadataBar.tsx    元数据栏（Aesthetics/Lighting/Art Style/Photo/Medium/Palette 六部分）
         HistoryStrip.tsx   生成图缩略图横条
-        GenerateRow.tsx    Save + Generate + Download Image 按钮行（保存成功提示、错误行）
+        GenerateRow.tsx    Save + Generate + Download Image + Show Prompt 按钮行（保存成功提示、错误行）
         ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
         HeaderBackButton.tsx  Stack 页头返回按钮（design 标题左侧，headerLeft 注入；刷新后仍可用，见「页面与导航」节）
         EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
+        PromptDialog.tsx   显示 Prompt 对话框（左：原始 prompt / 右：增强后结构化 JSON，只读双栏）
     services/
       PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
       IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
       imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
       settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
-      designStore.ts       localStorage 设计持久化（{prompt, images} 框架）+ 导航 handoff（未保存设计按 id 暂存）+ 返回首页导航标志 + newDesignId
+      designStore.ts       localStorage 设计持久化（{prompt, images, rawPrompt} 框架）+ 导航 handoff（未保存设计按 id 暂存，含原始 prompt）+ 返回首页导航标志 + newDesignId
       color.ts             hex/RGB/HSV 互转与 clamp 工具
     test/
       services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload）
@@ -82,7 +83,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 空元素判定 `isEmptyElement`：text 无 `text`、或 obj 无 `desc`。
 
 ### Design（designStore.ts）
-保存的设计 = `{ id, prompt: RefinedPrompt, images: string[], size: {width, height}, updatedAt }`，存于 `localStorage['drawboard.designs']`，按 `updatedAt` 倒序。`size` 无法从 prompt 恢复所以单独存；`id` 用于重复保存时 upsert 同一条记录。
+保存的设计 = `{ id, prompt: RefinedPrompt, images: string[], size: {width, height}, updatedAt, rawPrompt? }`，存于 `localStorage['drawboard.designs']`，按 `updatedAt` 倒序。`size` 无法从 prompt 恢复所以单独存；`id` 用于重复保存时 upsert 同一条记录。`rawPrompt` = 用户输入的原始一句话 prompt（Show Prompt 对话框左栏展示用；旧设计无此字段，左栏显示为空）。
 
 ## 设置（Settings）
 
@@ -113,12 +114,12 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - **`src/i18n/`**：`translations.ts` 双语词表——`enUS` 为基准（~60 个 key），`zhCN` 类型是 `Record<keyof typeof enUS, string>`，编译期强制 key 对齐、不许缺值；另导出 `Locale`（`'en-US' | 'zh-CN'`）、`LOCALES`、`DEFAULT_LOCALE = 'en-US'`、`LOCALE_STORAGE_KEY = 'drawboard.locale'`、`LOCALE_FLAGS`（🇺🇸 / 🇨🇳）。`I18nContext.tsx`：`I18nProvider`（根布局 `_layout.tsx` 包裹 Stack）+ `useI18n()`（`locale` / `setLocale` / `t`）；`t(key, vars?)` 做 `{name}` 占位替换，未知 key 原样透传（不崩）。
 - **locale 持久化**：选择写 `localStorage['drawboard.locale']`，刷新/重开保持；`loadLocale` 读非法值（或无存储）回退 `en-US`。
 - **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗按钮（flag-emoji 风格内联 SVG data-URI，按钮 testID `lang-switcher`、旗帜本体 `lang-flag-<locale>`；不用区域指示符 emoji——缺字体时渲染成 "US"/"CN" 字母，且 RN-web `<Image>` 对该 data-URI 不出图，故用带 CSS background 的普通 View，同画布网格机制），点击开下拉（两个选项各带小国旗 + 语言自称文案——`LOCALE_NAMES`：en-US → "English"、zh-CN → "中文"，自称不随当前 locale 变化；testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
-- **覆盖**：首页（侧栏标题/占位、输入区标题、W/H/自定义、开始设计/处理中、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、调色盘 popover、设置对话框全部标签）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
+- **覆盖**：首页（侧栏标题/占位、输入区标题、W/H/自定义、开始设计/处理中、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
 
 ## 页面与导航
 
 `index.tsx`（默认页）⇄ `design.tsx`。**导航只在 URL 里带设计 `id`**——LLM 改写后的 prompt 太大，放 query 参数会触发 HTTP 431（请求行过长），所以走 localStorage handoff（见下）。
-- 首页「开始设计」→ 生成新设计 id（`newDesignId`）→ `setDesignHandoff(id, { promptData, size })` 把 LLM 结果与画布尺寸暂存到 localStorage（key `drawboard.handoff`，按 id 的映射，上限 10 条、超了逐出最旧）→ `router.push('/design', { id })`。handoff 读时不消费，未保存设计的刷新/前进后退仍能解析；Save 成功时 `clearDesignHandoff(id)`（store 成为唯一事实来源，避免重开时读到编辑前的旧 payload）。
+- 首页「开始设计」→ 生成新设计 id（`newDesignId`）→ `setDesignHandoff(id, { promptData, size, rawPrompt })` 把 LLM 结果、画布尺寸与用户原始 prompt 暂存到 localStorage（key `drawboard.handoff`，按 id 的映射，上限 10 条、超了逐出最旧）→ `router.push('/design', { id })`。handoff 读时不消费，未保存设计的刷新/前进后退仍能解析；Save 成功时 `clearDesignHandoff(id)`（store 成为唯一事实来源，避免重开时读到编辑前的旧 payload）。
 - 首页点最近设计卡片 → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
 - 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
 - 设计页的返回按钮在 **Stack 页头**（"design" 标题左侧），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
@@ -228,8 +229,15 @@ Save/Generate 行中 Generate 右侧的按钮，下载**画布当前选中**的�
 - 还没有任何生成图（首页重写后未生成、或历史设计无图）→ 按钮仍可用，点击弹**红色悬浮提示**（视口顶部居中、Stack 页头下方，`pointerEvents` 关闭）「No image has been generated yet — generate one first, then download.」，**5 秒后自动消失**（新的失败重新计时）。
 - `refinedData` 缺失时与 Save/Generate 一样禁用。
 
+### 显示 Prompt（Show Prompt）
+Save/Generate 行中 Download Image 右侧的按钮（12px 间距），点击弹出 `PromptDialog`（模态，点遮罩/X 关闭），两个只读文本框并排：
+- **左栏「Original Prompt」**：用户输入的原始 prompt（`rawPrompt`）原样显示；设计没有记录原始 prompt 时（旧设计、裸访问 /design）显示为空。
+- **右栏「Structured Prompt」**：增强后的结构化 JSON prompt——当前 `refinedData` 的 `JSON.stringify(_, null, 2)`（含画布编辑后的最新状态）。
+- `refinedData` 缺失时与 Save/Generate 一样禁用。
+- `rawPrompt` 的来源：首页「开始设计」时随 handoff 暂存（`useStartDesign`），Save 时随设计一起 `upsertDesign` 持久化（见「数据模型」节）；设计页加载时按 handoff 优先、否则读 store 恢复。
+
 ### 保存（Save）
-`normalizePromptForIdeogram(refinedData)` + 当前 `images` + 画布尺寸 + `Date.now()` → `upsertDesign` 写 localStorage；元素上的 `visible` 键原样保留（隐藏状态重开时恢复，见「图层列表」节）；按钮旁显示「Saved ✓」1.8s。Save/Generate 在 `refinedData` 缺失时禁用。
+`normalizePromptForIdeogram(refinedData)` + 当前 `images` + 画布尺寸 + `rawPrompt` + `Date.now()` → `upsertDesign` 写 localStorage；元素上的 `visible` 键原样保留（隐藏状态重开时恢复，见「图层列表」节）；按钮旁显示「Saved ✓」1.8s。Save/Generate 在 `refinedData` 缺失时禁用。
 
 ### 图片历史条
 有生成图时画布下方显示「Generated (N)」缩略图横条：点击缩略图在画布查看该图，当前查看的缩略图蓝边高亮。
@@ -279,7 +287,7 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 - `PromptRefiner.spec.ts`：mock `fetch` 与 settings 模块，验证 refine / resolveContradictionInBBox 的请求体（system prompt、caption 原文）、透传返回、错误状态与非预期结构的抛错。
 - `settings.spec.ts`：纯函数单测——厂商/自建后端端点解析、自建默认地址、官方/本地图像 URL、active profile 解析、各项缺失判定（LLM key 仅自建后端可空、图像 key 仅 Custom 可空）、per-provider profile 互不干扰、无 localStorage 时的默认值。
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
-- `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）。
+- `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）；`rawPrompt` 在 handoff 与已存设计中的持久化（含旧格式缺省、upsert 保留）。
 - `imageDownload.spec.ts`：纯函数单测（stub fetch/document/URL object-URL）——成功时以正确文件名经 `<a download>` 点击触发下载；fetch 失败时抛错且不动 DOM。
 - `i18n.spec.ts`：纯函数单测（内存 storage 挂到 `window.localStorage`）——默认 en-US、合法/非法存储值回退、`persistLocale` 写回、题目要求的全部英中映射、`{n}`/`{items}` 占位替换、未知 key 透传、双语表 key 对齐且无空值。
-- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。
+- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。

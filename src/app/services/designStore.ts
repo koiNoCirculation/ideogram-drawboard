@@ -12,6 +12,12 @@ export interface Design {
     images: string[];
     size: { width: number; height: number };
     updatedAt: number;
+    /**
+     * The user's original one-line prompt, kept so the design page can show
+     * it next to the refined JSON (Show Prompt dialog). Absent on designs
+     * saved before the field existed — the dialog then shows an empty pane.
+     */
+    rawPrompt?: string;
 }
 
 const STORAGE_KEY = 'drawboard.designs';
@@ -28,6 +34,8 @@ export interface DesignHandoff {
     /** The raw LLM JSON string, parsed (defensively) by the design page. */
     promptData: string;
     size: { width: number; height: number };
+    /** The user's original prompt text (for the Show Prompt dialog). */
+    rawPrompt?: string;
 }
 
 const HANDOFF_KEY = 'drawboard.handoff';

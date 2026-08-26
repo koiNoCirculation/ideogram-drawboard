@@ -59,6 +59,9 @@ const enUS = {
     save: 'Save',
     generate: 'Generate',
     downloadImage: 'Download Image',
+    showPrompt: 'Show Prompt',
+    originalPrompt: 'Original Prompt',
+    enhancedPrompt: 'Structured Prompt',
     saved: 'Saved ✓',
     // Context menu / edit dialog
     copy: 'Copy',
@@ -137,6 +140,9 @@ const zhCN: Record<keyof typeof enUS, string> = {
     save: '保存设计',
     generate: '生成图片',
     downloadImage: '下载图片',
+    showPrompt: '显示 Prompt',
+    originalPrompt: '原始 Prompt',
+    enhancedPrompt: '结构化 Prompt',
     saved: '已保存 ✓',
     // 右键菜单 / 编辑对话框
     copy: '复制',

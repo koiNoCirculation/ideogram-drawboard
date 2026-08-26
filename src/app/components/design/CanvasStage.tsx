@@ -59,6 +59,7 @@ export const CanvasStage = ({
     onSave,
     onGenerate,
     onDownload,
+    onShowPrompt,
 }: {
     showGrid: boolean;
     showElements: boolean;
@@ -99,6 +100,7 @@ export const CanvasStage = ({
     onSave: () => void;
     onGenerate: () => void;
     onDownload: () => void;
+    onShowPrompt: () => void;
 }) => {
     const { t } = useI18n();
     return (
@@ -372,6 +374,7 @@ export const CanvasStage = ({
             onSave={onSave}
             onGenerate={onGenerate}
             onDownload={onDownload}
+            onShowPrompt={onShowPrompt}
         />
     </View>
     );

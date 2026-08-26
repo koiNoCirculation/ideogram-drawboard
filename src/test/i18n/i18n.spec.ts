@@ -80,6 +80,9 @@ describe('translate', () => {
         expect(translate('en-US', 'save')).toBe('Save');
         expect(translate('en-US', 'generate')).toBe('Generate');
         expect(translate('en-US', 'downloadImage')).toBe('Download Image');
+        expect(translate('en-US', 'showPrompt')).toBe('Show Prompt');
+        expect(translate('en-US', 'originalPrompt')).toBe('Original Prompt');
+        expect(translate('en-US', 'enhancedPrompt')).toBe('Structured Prompt');
     });
 
     it('returns the required Chinese strings', () => {
@@ -101,6 +104,9 @@ describe('translate', () => {
         expect(translate('zh-CN', 'save')).toBe('保存设计');
         expect(translate('zh-CN', 'generate')).toBe('生成图片');
         expect(translate('zh-CN', 'downloadImage')).toBe('下载图片');
+        expect(translate('zh-CN', 'showPrompt')).toBe('显示 Prompt');
+        expect(translate('zh-CN', 'originalPrompt')).toBe('原始 Prompt');
+        expect(translate('zh-CN', 'enhancedPrompt')).toBe('结构化 Prompt');
     });
 
     it('substitutes {placeholder} variables', () => {

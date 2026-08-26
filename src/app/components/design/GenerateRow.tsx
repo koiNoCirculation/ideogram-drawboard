@@ -2,7 +2,7 @@ import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../design/designStyles';
 import { useI18n } from '../../../i18n';
 
-/** Save + Generate + Download Image buttons (with the "Saved ✓" confirmation) and the error line. */
+/** Save + Generate + Download Image + Show Prompt buttons (with the "Saved ✓" confirmation) and the error line. */
 export const GenerateRow = ({
     dataMissing,
     isGenerating,
@@ -12,8 +12,9 @@ export const GenerateRow = ({
     onSave,
     onGenerate,
     onDownload,
+    onShowPrompt,
 }: {
-    /** True when there is no refinedData — Save/Generate/Download are disabled. */
+    /** True when there is no refinedData — Save/Generate/Download/Show Prompt are disabled. */
     dataMissing: boolean;
     isGenerating: boolean;
     isDownloading: boolean;
@@ -22,6 +23,7 @@ export const GenerateRow = ({
     onSave: () => void;
     onGenerate: () => void;
     onDownload: () => void;
+    onShowPrompt: () => void;
 }) => {
     const { t } = useI18n();
     return (
@@ -58,6 +60,14 @@ export const GenerateRow = ({
                 ) : (
                     <Text style={styles.generateButtonText}>{t('downloadImage')}</Text>
                 )}
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[styles.generateButton, styles.showPromptButton, dataMissing && styles.generateButtonDisabled]}
+                onPress={onShowPrompt}
+                disabled={dataMissing}
+                testID="show-prompt-button"
+            >
+                <Text style={styles.generateButtonText}>{t('showPrompt')}</Text>
             </TouchableOpacity>
             {showSaved && <Text style={styles.savedText}>{t('saved')}</Text>}
         </View>

@@ -250,6 +250,10 @@ export const styles = StyleSheet.create({
     downloadButton: {
         marginLeft: 12,
     },
+    // Show Prompt, shown to the right of Download Image: same 12px gap.
+    showPromptButton: {
+        marginLeft: 12,
+    },
     generateButtonText: {
         color: '#FFFFFF',
         fontSize: 15,

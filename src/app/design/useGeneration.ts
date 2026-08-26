@@ -57,6 +57,7 @@ export function useGeneration(
     canvasSize: { width: number; height: number },
     designId: string,
     bboxEditedRef: RefObject<boolean>,
+    rawPrompt: string,
 ) {
     const { t } = useI18n();
     // All generated image URLs, in generation order.
@@ -219,6 +220,9 @@ export function useGeneration(
             images,
             size: { width: canvasSize.width, height: canvasSize.height },
             updatedAt: Date.now(),
+            // Keep the original prompt with the design so re-opening it can
+            // show both prompt versions (Show Prompt dialog).
+            rawPrompt,
         };
         upsertDesign(design);
         // The stored design is now the source of truth: drop the navigation

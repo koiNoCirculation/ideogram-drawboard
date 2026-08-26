@@ -7,6 +7,7 @@ import { CanvasStage } from './components/design/CanvasStage';
 import { ContextMenu } from './components/design/ContextMenu';
 import { HeaderBackButton } from './components/design/HeaderBackButton';
 import { EditDialog } from './components/design/EditDialog';
+import { PromptDialog } from './components/design/PromptDialog';
 import { MetadataBar } from './components/design/MetadataBar';
 import { Toolbar } from './components/design/Toolbar';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -63,6 +64,11 @@ export default function DesignScreen() {
     const [showGrid, setShowGrid] = useState(true);
     // Settings dialog (opened from the gear icon in the header).
     const [showSettings, setShowSettings] = useState(false);
+    // The user's original prompt (for the Show Prompt dialog); empty when the
+    // design has no record of one (legacy saved designs, bare /design visit).
+    const [rawPrompt, setRawPrompt] = useState('');
+    // Show Prompt dialog (original prompt vs. refined structured JSON).
+    const [showPromptDialog, setShowPromptDialog] = useState(false);
 
     // Scale the requested canvas size to fit the available area, preserving aspect ratio,
     // then apply the wheel zoom (canvas + elements only; the outer UI is unscaled).
@@ -99,7 +105,7 @@ export default function DesignScreen() {
     // Right-click context menu + element field editor + deletion.
     const editing = useElementEditing(refinedData, setRefinedData, history.recordAction, bboxEditedRef);
     // Image generation + saving + the generated-image history.
-    const generation = useGeneration(refinedData, setRefinedData, canvasSize, designId, bboxEditedRef);
+    const generation = useGeneration(refinedData, setRefinedData, canvasSize, designId, bboxEditedRef, rawPrompt);
 
     // Load the design by id: a just-started design's prompt lives in the
     // localStorage handoff (too large for URL query params — HTTP 431); a
@@ -143,6 +149,10 @@ export default function DesignScreen() {
             if (size) {
                 setCanvasSize({ width: size.width, height: size.height });
             }
+
+            // The user's original prompt (handoff for a fresh design, store
+            // for a re-opened one); '' when neither recorded one.
+            setRawPrompt(handoff?.rawPrompt ?? stored?.rawPrompt ?? '');
 
             // When re-opening a saved design, restore its generated image
             // history and show the latest one on the canvas.
@@ -345,6 +355,7 @@ export default function DesignScreen() {
                         onSave={generation.handleSave}
                         onGenerate={generation.handleGenerate}
                         onDownload={generation.handleDownload}
+                        onShowPrompt={() => setShowPromptDialog(true)}
                     />
                 </View>
             </View>
@@ -394,6 +405,11 @@ export default function DesignScreen() {
                         <Text style={styles.downloadErrorText}>{generation.downloadError}</Text>
                     </View>
                 </View>
+            )}
+
+            {/* Show Prompt dialog: original prompt (left, may be empty) vs. the refined structured JSON (right). */}
+            {showPromptDialog && refinedData && (
+                <PromptDialog original={rawPrompt} enhanced={JSON.stringify(refinedData, null, 2)} onClose={() => setShowPromptDialog(false)} />
             )}
 
             {/* Settings dialog (LLM + image generation endpoints/credentials) */}
