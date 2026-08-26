@@ -32,7 +32,7 @@ src/
       ColorPalette.tsx     调色板（色块 + 添加按钮 + 弹出编辑 popover，portal 到 body）
       ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
       SettingsDialog.tsx   设置对话框（两个下拉 + 五个文本框，内联展开式下拉）
-      LanguageSwitcher.tsx 界面语言切换器（国旗 emoji 按钮 + 下拉菜单，portal 到 body，见「i18n」节）
+      LanguageSwitcher.tsx 界面语言切换器（国旗 SVG 按钮 + 下拉菜单，portal 到 body，见「i18n」节）
       design/              设计页展示组件（props 驱动，无自身状态）
         CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形 + 标尺 + 图层列表）、历史条与保存/生成行
         CanvasRulers.tsx   画布上/左边缘标尺（0–1000 双轴，向外延伸、随画布缩放、与网格对齐，数字密度按档位）
@@ -112,7 +112,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 - **`src/i18n/`**：`translations.ts` 双语词表——`enUS` 为基准（~60 个 key），`zhCN` 类型是 `Record<keyof typeof enUS, string>`，编译期强制 key 对齐、不许缺值；另导出 `Locale`（`'en-US' | 'zh-CN'`）、`LOCALES`、`DEFAULT_LOCALE = 'en-US'`、`LOCALE_STORAGE_KEY = 'drawboard.locale'`、`LOCALE_FLAGS`（🇺🇸 / 🇨🇳）。`I18nContext.tsx`：`I18nProvider`（根布局 `_layout.tsx` 包裹 Stack）+ `useI18n()`（`locale` / `setLocale` / `t`）；`t(key, vars?)` 做 `{name}` 占位替换，未知 key 原样透传（不崩）。
 - **locale 持久化**：选择写 `localStorage['drawboard.locale']`，刷新/重开保持；`loadLocale` 读非法值（或无存储）回退 `en-US`。
-- **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗 emoji 按钮（testID `lang-switcher`），点击开下拉（两个选项，testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
+- **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗按钮（flag-emoji 风格内联 SVG data-URI，按钮 testID `lang-switcher`、旗帜本体 `lang-flag-<locale>`；不用区域指示符 emoji——缺字体时渲染成 "US"/"CN" 字母，且 RN-web `<Image>` 对该 data-URI 不出图，故用带 CSS background 的普通 View，同画布网格机制），点击开下拉（两个选项各带小国旗，testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
 - **覆盖**：首页（侧栏标题/占位、输入区标题、W/H/自定义、开始设计/处理中、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、调色盘 popover、设置对话框全部标签）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
 
 ## 页面与导航

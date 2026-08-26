@@ -69,7 +69,9 @@ async function openDesign(page) {
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
         const flag = page.locator('[data-testid="lang-switcher"]');
-        ok((await flag.innerText()).includes('🇺🇸'), 'switcher shows the US flag by default');
+        // Flags are SVG images (emoji glyphs don't render in every font stack),
+        // so assert on the per-locale flag image testID.
+        ok(await page.locator('[data-testid="lang-flag-en-US"]').count() === 1, 'switcher shows the US flag by default');
         ok(await page.getByText('Recent Designs').count() === 1, 'sidebar title English');
         ok(await page.getByText('No saved designs yet').count() === 1, 'empty placeholder English');
         ok(await page.getByText('Enter the description of your dreamed image').count() === 1, 'section title English');
@@ -130,7 +132,7 @@ async function openDesign(page) {
         await page.locator('[data-testid="lang-option-zh-CN"]').click();
         await page.waitForTimeout(400);
 
-        ok((await page.locator('[data-testid="lang-switcher"]').innerText()).includes('🇨🇳'), 'switcher now shows the CN flag');
+        ok(await page.locator('[data-testid="lang-flag-zh-CN"]').count() === 1, 'switcher now shows the CN flag');
         for (const label of ['美学关键字', '光照关键字', '艺术风格关键字', '照片关键字', '载体关键字', '调色盘', '背景']) {
             ok(await page.getByText(label, { exact: true }).count() === 1, `metadata label "${label}" Chinese`);
         }
@@ -162,7 +164,7 @@ async function openDesign(page) {
     await section('S4 zh-CN persists across reload; home page Chinese', async () => {
         await page.reload({ waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        ok((await page.locator('[data-testid="lang-switcher"]').innerText()).includes('🇨🇳'), 'locale survives reload (flag)');
+        ok(await page.locator('[data-testid="lang-flag-zh-CN"]').count() === 1, 'locale survives reload (flag)');
         ok(await page.getByText('美学关键字', { exact: true }).count() === 1, 'locale survives reload (label)');
         ok(await page.evaluate(() => localStorage.getItem('drawboard.locale')) === 'zh-CN',
             'drawboard.locale = zh-CN in localStorage');
@@ -185,7 +187,7 @@ async function openDesign(page) {
         await page.waitForTimeout(200);
         await page.locator('[data-testid="lang-option-en-US"]').click();
         await page.waitForTimeout(400);
-        ok((await page.locator('[data-testid="lang-switcher"]').innerText()).includes('🇺🇸'), 'switcher back to the US flag');
+        ok(await page.locator('[data-testid="lang-flag-en-US"]').count() === 1, 'switcher back to the US flag');
         ok(await page.getByText('Recent Designs').count() === 1, 'sidebar title back to English');
         ok(await page.getByText('Start Design', { exact: true }).count() === 1, 'start button back to English');
         ok(await page.evaluate(() => localStorage.getItem('drawboard.locale')) === 'en-US',

@@ -55,3 +55,30 @@
    - S5 切回 en-US：恢复英文 + localStorage 断言。
 3. 回归：`scripts/e2e_regression.cjs` 更新默认英文文案（Start Design /
    No saved designs yet）后全量跑通；`npm test` 全部单测通过。
+
+---
+## 后续修复：国旗显示 + 设计页点击（2026-08-25）
+
+用户反馈：(1) 右上角 i18n 显示应显示国旗 emoji（实际渲染成 "US"/"CN" 字母）；
+(2) design 页点击 i18n 不弹菜单。
+
+排查结论：
+1. **emoji 不渲染**：DOM 码点正确（U+1F1FA U+1F1F8），但 RN-web 默认字体栈
+   （-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, …）不含 emoji 字体，
+   显式指定 "Segoe UI Emoji"/system-ui/sans-serif 字体探测均渲染为字母
+   （temp/font_probe.png）。→ 放弃 emoji 文本，改为 **flag-emoji 风格内联 SVG
+   data-URI**（圆角矩形，US 条纹+星区、CN 五星），任何 OS/浏览器渲染一致。
+2. **RN-web `<Image>` 不出图**：`source={{uri: 'data:image/svg+xml;utf8,…'}}` 时
+   背景 div 的 backgroundImage 恒为 none（ImageLoader 状态机对该 data-URI
+   未走显示路径；原始 `<img>` 直接加载同一 URI 正常，225×150）。→ 改用普通
+   `View` + `style={{ backgroundImage: url("…") }}`（与画布网格同一机制，
+   动态 url 值经 RNW stylesheet 注册可正常渲染）。
+3. **设计页点击"不弹菜单"**：当前构建下 Playwright 复现点击（raw click 与
+   move+down+up）菜单均正常打开（temp/debug_flag.cjs）——用户看到的是
+   portal 修复前的旧 bundle（菜单 fixed 层被页面内容盖住，看似没弹）。
+   硬刷新（Ctrl+Shift+R）即可。
+
+改动：LanguageSwitcher.tsx 重写旗帜为 SVG（按钮 `lang-flag-<locale>` +
+菜单选项各带小旗）；e2e_i18n.cjs 四处国旗断言改 testID 计数；DESIGN.md
+i18n 节同步。验证：npm test 38/38、e2e_i18n 55/55、e2e_regression 153/153、
+tsc 干净、截图确认两面旗帜可见（temp/flag_button.png / flag_menu.png）。
