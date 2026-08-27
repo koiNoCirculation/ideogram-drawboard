@@ -48,58 +48,59 @@ test('newImageId: img- prefixed id, unique across calls', () => {
     expect(a).not.toBe(b);
 });
 
-test('isDirectUri: http/https/data values are direct, ids are not', () => {
-    expect(imageStore.isDirectUri('http://x/a.png')).toBe(true);
-    expect(imageStore.isDirectUri('https://x/a.png')).toBe(true);
-    expect(imageStore.isDirectUri('data:image/png;base64,AAA')).toBe(true);
-    expect(imageStore.isDirectUri('img-lx0abc-123456')).toBe(false);
-    expect(imageStore.isDirectUri('design-xyz')).toBe(false);
+test('saveGeneratedImage: stores under an explicit id when given (stable-id callers)', async () => {
+    const id = await imageStore.saveGeneratedImage('http://images.test/new.png', 'img-stable-1');
+    expect(id).toBe('img-stable-1');
+    expect(await imageStore.resolveImageRef('img-stable-1')).toBe(EXPECTED_URI);
 });
 
 test('saveGeneratedImage: stores the base64 data URI under a fresh id', async () => {
     const id = await imageStore.saveGeneratedImage('http://images.test/new.png');
     expect((global as any).fetch).toHaveBeenCalledWith('http://images.test/new.png');
     expect(id).toMatch(/^img-/);
-    expect(await imageStore.resolveImageRef(id)).toBe(EXPECTED_URI);
+    expect(await imageStore.resolveImageRef(id!)).toBe(EXPECTED_URI);
 });
 
-test('saveGeneratedImage: fetch failure falls back to the raw URL (and logs)', async () => {
+test('saveGeneratedImage: fetch failure resolves to null (and logs) — no URL fallback', async () => {
     (global as any).fetch = jest.fn(() => Promise.reject(new Error('CORS')));
 
     const ref = await imageStore.saveGeneratedImage('http://images.test/new.png');
 
-    expect(ref).toBe('http://images.test/new.png');
+    expect(ref).toBeNull();
     expect((console as any).error).toHaveBeenCalled();
 });
 
-test('saveGeneratedImage: non-2xx response falls back to the raw URL', async () => {
+test('saveGeneratedImage: non-2xx response resolves to null', async () => {
     stubFetch({ ok: false, status: 500 });
 
     const ref = await imageStore.saveGeneratedImage('http://images.test/new.png');
 
-    expect(ref).toBe('http://images.test/new.png');
+    expect(ref).toBeNull();
 });
 
-test('saveGeneratedImage: IndexedDB unavailable falls back to the raw URL', async () => {
+test('saveGeneratedImage: IndexedDB unavailable resolves to null', async () => {
     delete (globalThis as any).indexedDB;
 
     const ref = await imageStore.saveGeneratedImage('http://images.test/new.png');
 
-    expect(ref).toBe('http://images.test/new.png');
+    expect(ref).toBeNull();
     expect((console as any).error).toHaveBeenCalled();
 });
 
-test('resolveImageRef: URL-like values pass through untouched', async () => {
-    expect(await imageStore.resolveImageRef('https://x/legacy.png')).toBe('https://x/legacy.png');
-    expect(await imageStore.resolveImageRef('data:image/png;base64,QQ==')).toBe('data:image/png;base64,QQ==');
-    // Pass-through must not touch IndexedDB at all.
-    delete (globalThis as any).indexedDB;
-    expect(await imageStore.resolveImageRef('http://x/legacy.png')).toBe('http://x/legacy.png');
+test('resolveImageRef: refs are IDs only — URL-like values no longer pass through', async () => {
+    // Legacy URL entries (pre-IDB designs) miss the store and resolve to null
+    // (the caller renders a placeholder) instead of the raw URL.
+    expect(await imageStore.resolveImageRef('https://x/legacy.png')).toBeNull();
+    expect(await imageStore.resolveImageRef('data:image/png;base64,QQ==')).toBeNull();
+    expect(await imageStore.resolveImageRef('/example_collection/design-abc-123.png')).toBeNull();
+    // A ref that IS stored still resolves.
+    const id = await imageStore.saveGeneratedImage('http://images.test/new.png');
+    expect(await imageStore.resolveImageRef(id!)).toBe(EXPECTED_URI);
 });
 
 test('resolveImageRef: returns the stored data URI for a known id', async () => {
     const id = await imageStore.saveGeneratedImage('http://images.test/new.png');
-    expect(await imageStore.resolveImageRef(id)).toBe(EXPECTED_URI);
+    expect(await imageStore.resolveImageRef(id!)).toBe(EXPECTED_URI);
 });
 
 test('resolveImageRef: unknown id resolves to null (no throw)', async () => {

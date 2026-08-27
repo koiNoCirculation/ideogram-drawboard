@@ -17,7 +17,8 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { useI18n } from '../i18n';
 import { useStartDesign } from './useStartDesign';
 import { useImageUris } from './useImageUris';
-import { Design, loadDesigns, markNavigationFromHome } from './services/designStore';
+import { Design, loadDesigns, markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
+import { exampleToDesign, loadExampleCollection } from './services/exampleCollection';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
 
@@ -36,34 +37,65 @@ export default function IndexScreen() {
     const [height, setHeight] = useState('768');
     // Saved designs backing the Recent Designs wall, most recent first.
     const [designs, setDesigns] = useState<Design[]>([]);
+    // Bundled example designs (public/example_collection) backing the default
+    // Home wall; empty when the collection fails to load.
+    const [examples, setExamples] = useState<Design[]>([]);
     // Settings dialog (opened from the gear icon, top-right of the page).
     const [showSettings, setShowSettings] = useState(false);
     const [activeSection, setActiveSection] = useState<HomeSection>('home');
 
     // Start Design flow (settings validation → refine with retry → handoff →
-    // navigate); also owns the transient refine-error line. Triggered by the
-    // circular arrow button inside the prompt bar.
+    // navigate); also owns the red LLM error line (transient "retrying"
+    // notices, persistent final failures). Triggered by the circular arrow
+    // button inside the prompt bar.
     const { isLoading, refineError, handleStartDesigning } = useStartDesign({
         prompt, selectedRatio, width, height,
     });
 
     useEffect(() => {
         setDesigns(loadDesigns());
+        // Populate the default Home wall with the bundled example collection;
+        // a load failure leaves the wall empty (its empty state shows).
+        loadExampleCollection().then((entries) =>
+            setExamples(entries.map((entry, i) => exampleToDesign(entry, i))));
     }, []);
 
-    // Resolve each design's latest image (IDs into the IndexedDB image store;
-    // legacy URL entries pass through), aligned by index with `designs`.
+    // Resolve each design's latest image (ids into the IndexedDB image store —
+    // the only ref kind), aligned by index with `designs`.
     const latestRefs = useMemo(
         () => designs.map((d) => (d.images.length > 0 ? d.images[d.images.length - 1] : null)),
         [designs],
     );
     const latestUris = useImageUris(latestRefs);
 
+    // Resolve each example's image (ids persisted by loadExampleCollection,
+    // looked up in the IndexedDB image store), aligned by index with `examples`.
+    const exampleRefs = useMemo(
+        () => examples.map((d) => (d.images.length > 0 ? d.images[d.images.length - 1] : null)),
+        [examples],
+    );
+    const exampleUris = useImageUris(exampleRefs);
+
     // Re-open a saved design: the full payload lives in the design store, so
     // only the id goes in the URL.
     const handleOpenDesign = (design: Design) => {
         markNavigationFromHome();
         router.push({ pathname: '/design', params: { id: design.id } });
+    };
+
+    // Open an example as a fresh, editable design: stash its refined prompt,
+    // canvas size, original prompt and reference image in the navigation
+    // handoff (too large for URL query params), then navigate with a new id.
+    const handleOpenExample = (example: Design) => {
+        const id = newDesignId();
+        setDesignHandoff(id, {
+            promptData: JSON.stringify(example.prompt),
+            size: example.size,
+            rawPrompt: example.rawPrompt,
+            images: example.images,
+        });
+        markNavigationFromHome();
+        router.push({ pathname: '/design', params: { id } });
     };
 
     // Synchronize width/height when preset ratio changes
@@ -196,9 +228,12 @@ export default function IndexScreen() {
                                 </View>
                             </View>
 
-                            {/* Transient refine error (invalid JSON → retrying); auto-dismisses after 5s */}
+                            {/* Red LLM error line: "retrying" auto-dismisses
+                                after 5s, final failures (bad endpoint, HTTP
+                                error, all JSON retries failed) persist until
+                                the next submit. */}
                             {refineError && (
-                                <View style={styles.refineErrorRow}>
+                                <View style={styles.refineErrorRow} testID="refine-error">
                                     <Text style={styles.refineErrorText}>{refineError}</Text>
                                 </View>
                             )}
@@ -227,16 +262,26 @@ export default function IndexScreen() {
                             </View>
                         </View>
 
-                        {/* Image wall: empty on Home, masonry on Recent Designs. */}
+                        {/* Image wall: bundled examples on Home (titled
+                            "Collections"), saved designs on Recent Designs. */}
                         <View style={styles.wallWrap}>
-                            <RecentDesignsWall
-                                active={activeSection === 'recent'}
-                                designs={designs}
-                                uris={latestUris}
-                                titleText={t('recentDesigns')}
-                                emptyText={t('noDesigns')}
-                                onOpen={handleOpenDesign}
-                            />
+                            {activeSection === 'recent' ? (
+                                <RecentDesignsWall
+                                    designs={designs}
+                                    uris={latestUris}
+                                    titleText={t('recentDesigns')}
+                                    emptyText={t('noDesigns')}
+                                    onOpen={handleOpenDesign}
+                                />
+                            ) : (
+                                <RecentDesignsWall
+                                    designs={examples}
+                                    uris={exampleUris}
+                                    titleText={t('collections')}
+                                    emptyText={t('noExamples')}
+                                    onOpen={handleOpenExample}
+                                />
+                            )}
                         </View>
                     </ScrollView>
                 </View>
@@ -401,7 +446,8 @@ const styles = StyleSheet.create({
     sendButtonDisabled: {
         backgroundColor: '#CCCCCC',
     },
-    // Transient refine error (invalid JSON, retrying) above the prompt bar.
+    // Red LLM error line above the prompt bar (transient "retrying" notice
+    // or persistent final failure — bad endpoint, HTTP error, bad JSON).
     refineErrorRow: {
         marginBottom: 12,
         padding: 10,

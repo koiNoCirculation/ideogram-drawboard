@@ -72,7 +72,8 @@ async function openDesign(page) {
         // Flags are SVG images (emoji glyphs don't render in every font stack),
         // so assert on the per-locale flag image testID.
         ok(await page.locator('[data-testid="lang-flag-en-US"]').count() === 1, 'switcher shows the US flag by default');
-        ok(await page.getByText('Recent Designs').count() === 1, 'sidebar nav English (home mode: no wall title)');
+        ok(await page.getByText('Recent Designs').count() === 1, 'sidebar nav English (home wall title is Collections)');
+        ok(await page.getByText('Collections', { exact: true }).count() === 1, 'wall title English (home mode)');
         ok(await page.getByText('Home', { exact: true }).count() === 1, 'home nav English');
         // The empty placeholder lives in the Recent Designs section (the wall).
         await page.locator('[data-testid="nav-recent-designs"]').click();
@@ -198,7 +199,8 @@ async function openDesign(page) {
 
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        ok(await page.getByText('最近的设计').count() === 1, 'sidebar nav Chinese (home mode: no wall title)');
+        ok(await page.getByText('最近的设计').count() === 1, 'sidebar nav Chinese (home wall title is 合集)');
+        ok(await page.getByText('合集', { exact: true }).count() === 1, 'wall title Chinese (home mode)');
         ok(await page.getByText('首页', { exact: true }).count() === 1, 'home nav Chinese');
         // The empty placeholder lives in the Recent Designs section (the wall).
         await page.locator('[data-testid="nav-recent-designs"]').click();

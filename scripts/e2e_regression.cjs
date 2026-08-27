@@ -22,6 +22,10 @@ const PNG_ALT = Buffer.from(
 );
 const DATA_URI = `data:image/png;base64,${PNG.toString('base64')}`;
 const DATA_URI_ALT = `data:image/png;base64,${PNG_ALT.toString('base64')}`;
+// The Home section wall is now the bundled example collection; read its size
+// from disk so the assertions track the file.
+const EXAMPLE_COUNT = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'example_collection', 'example.json'), 'utf8')).length;
 
 const BASE_PROMPT = {
     aspect_ratio: '4:3',
@@ -107,24 +111,41 @@ const mkSettings = (over = {}) => ({
     ...over,
 });
 
-async function newPage(browser, { settings, designs } = {}) {
+async function newPage(browser, { settings, designs, idbRecords } = {}) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const alerts = [];
     const errors = [];
     page.on('dialog', (d) => { alerts.push(d.message()); d.dismiss().catch(() => {}); });
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-    if (settings || designs) {
+    if (settings || designs || (idbRecords && idbRecords.length)) {
         // Seed only when absent: addInitScript re-runs on every navigation
         // (incl. page.reload()) and would otherwise wipe what the page itself
         // saved to localStorage. Fresh newPage() contexts start empty, so the
-        // first load always sees the seed.
-        await page.addInitScript(([s, d]) => {
+        // first load always sees the seed. IDB records (image data URIs) are
+        // put under their keyPath id; Playwright awaits the init promise.
+        await page.addInitScript(([s, d, idb]) => {
             if (s && !localStorage.getItem('drawboard.settings'))
                 localStorage.setItem('drawboard.settings', JSON.stringify(s));
             if (d && !localStorage.getItem('drawboard.designs'))
                 localStorage.setItem('drawboard.designs', JSON.stringify(d));
-        }, [settings, designs]);
+            if (!idb || idb.length === 0) return;
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open('drawboard-images', 1);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id' });
+                };
+                req.onsuccess = () => {
+                    const db = req.result;
+                    const tx = db.transaction('images', 'readwrite');
+                    idb.forEach((r) => tx.objectStore('images').put(r));
+                    tx.oncomplete = () => { db.close(); resolve(); };
+                    tx.onerror = () => reject(tx.error);
+                };
+                req.onerror = () => reject(req.error);
+            });
+        }, [settings, designs, idbRecords]);
     }
     return { page, alerts, errors };
 }
@@ -256,11 +277,16 @@ const GREY = 'rgb(204, 204, 204)';
 
         await expectWH('1024', '768', 'default 4:3 -> 1024x768');
 
-        // Image wall: on Home it is empty by default — no wall title, no
-        // tiles (only the sidebar nav says "Recent Designs"); switching the
-        // sidebar to Recent Designs shows the wall title + empty state.
-        ok(await page.getByText('Recent Designs', { exact: true }).count() === 1, 'home mode: sidebar nav only (no wall title)');
-        ok(await page.locator('[data-testid^="wall-tile-"]').count() === 0, 'home mode: image wall empty');
+        // Image wall: on Home it shows the bundled example collection under
+        // its own "Collections" title (one tile per example — only the
+        // sidebar nav says "Recent Designs"); switching the sidebar to
+        // Recent Designs shows THAT wall title + (unseeded here) empty state.
+        ok(await page.getByText('Recent Designs', { exact: true }).count() === 1,
+            'home mode: sidebar nav only (wall title is Collections)');
+        ok(await page.getByText('Collections', { exact: true }).count() === 1,
+            'home mode: Collections wall title shown');
+        ok(await page.locator('[data-testid^="wall-tile-"]').count() === EXAMPLE_COUNT,
+            `home mode: wall shows the example collection (${EXAMPLE_COUNT})`);
         await page.locator('[data-testid="nav-recent-designs"]').click();
         await page.waitForTimeout(300);
         ok(await page.getByText('Recent Designs', { exact: true }).count() === 2, 'recent mode: wall title shown');
@@ -1026,6 +1052,10 @@ const GREY = 'rgb(204, 204, 204)';
 
     // ================= S14: recent designs wall + reopen =================
     await section('S14 recent designs wall + reopen', async () => {
+        // Saved designs reference images by their IndexedDB id (the only ref
+        // kind); the data URIs are seeded into the image store below.
+        const D1_A = 'img-e2e-reg-d1a';
+        const D1_B = 'img-e2e-reg-d1b';
         const designs = [
             {
                 id: 'd1',
@@ -1038,7 +1068,7 @@ const GREY = 'rgb(204, 204, 204)';
                         elements: [{ type: 'obj', bbox: [100, 100, 400, 500], desc: 'a reopened element' }],
                     },
                 },
-                images: [`${BASE}/regress-img-1.png`, `${BASE}/regress-img-2.png`],
+                images: [D1_A, D1_B],
                 size: { width: 800, height: 600 },
                 updatedAt: 2000,
                 rawPrompt: 'raw d1 prompt',
@@ -1057,21 +1087,29 @@ const GREY = 'rgb(204, 204, 204)';
                 rawPrompt: 'raw d2 prompt',
             },
         ];
-        const { page } = await newPage(browser, { settings: mkSettings(), designs });
-        await page.route('**/regress-img-*.png', (route) =>
-            route.fulfill({ contentType: 'image/png', body: PNG }));
+        const { page } = await newPage(browser, {
+            settings: mkSettings(),
+            designs,
+            idbRecords: [
+                { id: D1_A, uri: DATA_URI, createdAt: 1 },
+                { id: D1_B, uri: DATA_URI_ALT, createdAt: 2 },
+            ],
+        });
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
-        await page.waitForTimeout(600);
-        ok(await page.locator('[data-testid^="wall-tile-"]').count() === 0, 'home mode: wall empty');
+        await page.waitForTimeout(1200);
+        // Home mode now shows the bundled example collection, not an empty wall.
+        ok(await page.locator('[data-testid^="wall-tile-"]').count() === EXAMPLE_COUNT,
+            `home mode: example wall shown (${EXAMPLE_COUNT})`);
 
         await page.locator('[data-testid="nav-recent-designs"]').click();
         await page.waitForTimeout(500);
         ok(await page.getByText('Recent Designs', { exact: true }).count() === 2, 'recent mode: wall title shown');
         // d1 has images, d2 does not -> exactly one wall tile, showing d1's
-        // LATEST image (regress-img-2).
+        // LATEST image (its second IDB record's data URI).
         ok(await page.locator('[data-testid="wall-tile-d1"]').count() === 1, 'tile for the design with images');
         ok(await page.locator('[data-testid="wall-tile-d2"]').count() === 0, 'no tile for the design without images');
-        ok(await page.locator('img[src*="regress-img-2"]').count() === 1, 'tile shows the latest image');
+        ok(await page.locator('[data-testid="wall-tile-d1"] img').getAttribute('src') === DATA_URI_ALT,
+            'tile shows the latest image (resolved from IndexedDB)');
 
         // Hover the tile -> overlay with the design's ORIGINAL prompt.
         const tile = page.locator('[data-testid="wall-tile-d1"]');
@@ -1093,8 +1131,8 @@ const GREY = 'rgb(204, 204, 204)';
         const cb = await canvasLoc(page).boundingBox();
         ok(Math.abs(cb.width / cb.height - 800 / 600) < 0.02, `canvas restored to 800x600 ratio (${(cb.width / cb.height).toFixed(3)})`);
         ok(await page.getByText('Generated (2)').count() === 1, 'image history restored');
-        ok((await canvasLoc(page).locator('img').first().getAttribute('src')).includes('regress-img-2'),
-            'latest image shown on reopen');
+        ok((await canvasLoc(page).locator('img').first().getAttribute('src')) === DATA_URI_ALT,
+            'latest image shown on reopen (resolved from IndexedDB)');
         await page.close();
     });
 

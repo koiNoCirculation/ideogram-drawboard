@@ -1,4 +1,37 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(NODE_PATH=\"C:/Users/lyt/AppData/Roaming/npm/node_modules/@playwright/cli/node_modules\" node \"C:/tmp/copy_paste_check.cjs\")",
+      "Bash(NODE_PATH=\"C:/Users/lyt/AppData/Roaming/npm/node_modules/@playwright/cli/node_modules\" node \"c:/Users/lyt/PycharmProjects/DrawBoard/scripts/e2e_regression.cjs\")",
+      "Bash(npm test *)",
+      "Bash(echo \"exit:$?\")",
+      "Read(//c/tmp/**)",
+      "Bash(sed -n '55,75p' \"C:/tmp/reg_full.log\")",
+      "Bash(node scripts/e2e_regression.cjs)",
+      "Bash(npm root *)",
+      "Bash(ls \"C:\\\\Users\\\\lyt\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\" | head; echo ===; ls \"C:\\\\Users\\\\lyt\\\\AppData\\\\Roaming\\\\npm\" | head)",
+      "Read(//c/Users/lyt/AppData/Roaming/npm/node_modules/**)",
+      "Read(//c/Users/lyt/AppData/Roaming/npm/**)",
+      "Read(//c/Users/lyt/AppData/Roaming/npm/node_modules/@playwright/**)",
+      "Bash(node -p \"require\\('C:/Users/lyt/AppData/Roaming/npm/node_modules/@playwright/cli/package.json'\\).version\")",
+      "Read(//c/Users/lyt/.cache/**)",
+      "Bash(node -p \"JSON.stringify\\(require\\('C:/Users/lyt/AppData/Roaming/npm/node_modules/@playwright/cli/package.json'\\).dependencies||{}\\)\")",
+      "Bash(env)",
+      "Read(//c/Users/lyt/AppData/Local/ms-playwright/**)",
+      "Bash(npm i *)",
+      "Bash(time curl -s -o /dev/null -w \"%{http_code} %{size_download}\" \"http://localhost:8081/node_modules/expo-router/entry.bundle\"?)",
+      "Bash(curl -s http://localhost:8081/)",
+      "Bash(curl -s \"http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp&transform.reactCompiler=true\")",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 5 http://localhost:8081/)",
+      "Bash(nohup npx expo start --web --port 8081)",
+      "Bash(echo \"started $!\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" --max-time 5 http://localhost:8081/)"
+    ],
+    "additionalDirectories": [
+      "C:\\tmp"
+    ]
+  },
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }

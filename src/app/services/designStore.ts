@@ -36,6 +36,11 @@ export interface DesignHandoff {
     size: { width: number; height: number };
     /** The user's original prompt text (for the Show Prompt dialog). */
     rawPrompt?: string;
+    /**
+     * Optional seed image refs for the generated-image history (e.g. the
+     * reference image when a design is started from a home-page example).
+     */
+    images?: string[];
 }
 
 const HANDOFF_KEY = 'drawboard.handoff';

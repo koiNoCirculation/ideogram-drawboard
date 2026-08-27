@@ -74,13 +74,10 @@ const FRESH_HANDOFF = {
 
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    const PNG = Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-        'base64'
-    );
-    // The wall only tiles designs that HAVE images: serve the seed images.
-    await page.route('**/sp-img*.png', (route) =>
-        route.fulfill({ contentType: 'image/png', body: PNG }));
+    // The seed designs carry LEGACY URL image refs: under IDB-only refs they
+    // no longer resolve, so their wall tiles render the gray placeholder —
+    // but the tiles stay (images.length > 0) and clicking still opens the
+    // design. That is exactly the legacy case this suite exercises.
 
     // Seed the design store + a fresh-design handoff (single payload object).
     await page.addInitScript((seed) => {

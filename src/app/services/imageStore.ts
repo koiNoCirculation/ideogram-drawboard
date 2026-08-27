@@ -1,11 +1,10 @@
 /**
  * Local persistence for generated images. Ideogram (especially the official
  * API) returns image URLs that expire, so right after a successful generation
- * the image is fetched and stored as a base64 data URI in IndexedDB under a
- * fresh random id; the design's `images` array holds that id. Values that
- * already look like URLs (legacy designs, or entries that fell back to the raw
- * URL when the base64 conversion failed) are passed through untouched when
- * resolving.
+ * the image is fetched and stored as a base64 data URI in IndexedDB under an
+ * id; the design's `images` array holds that id. The id is the ONLY ref kind —
+ * every image (generated or bundled example) lives in this store, and a ref
+ * is resolved by looking the id up here.
  */
 
 /** One persisted image. `uri` is a full `data:<mime>;base64,...` string. */
@@ -22,11 +21,6 @@ const STORE = 'images';
 /** Fresh image id (same shape as newDesignId in designStore.ts). */
 export function newImageId(): string {
     return `img-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** True for values already directly usable as an <Image> uri. */
-export function isDirectUri(ref: string): boolean {
-    return /^(https?|data):/i.test(ref);
 }
 
 // Singleton open promise; cleared on failure/close so a transient error
@@ -89,12 +83,15 @@ async function putImage(image: StoredImage): Promise<void> {
 }
 
 /**
- * Fetch `url`, convert it to a base64 data URI, and persist it under a fresh
- * random id; returns the id. On ANY failure (fetch/CORS/network, non-2xx,
- * IDB unavailable) the raw `url` is returned instead, so the image still
- * displays (albeit with the service's own expiry). Never throws.
+ * Fetch `url`, convert it to a base64 data URI, and persist it in the image
+ * store; returns the id it was stored under (a fresh random one when `id` is
+ * omitted, the caller's id otherwise — so stable-id callers can check-then-
+ * store without duplicating). On ANY failure (fetch/CORS/network, non-2xx,
+ * IDB unavailable) returns null — there is no raw-URL fallback, a ref that
+ * can't be persisted doesn't exist. Never throws.
  */
-export async function saveGeneratedImage(url: string): Promise<string> {
+export async function saveGeneratedImage(url: string, id?: string): Promise<string | null> {
+    const imageId = id || newImageId();
     try {
         const response = await fetch(url);
         if (!response.ok) {
@@ -104,25 +101,20 @@ export async function saveGeneratedImage(url: string): Promise<string> {
         const contentType = (response.headers?.get?.('content-type') ?? '').split(';')[0].trim();
         const mime = contentType || 'image/png';
         const uri = `data:${mime};base64,${arrayBufferToBase64(buf)}`;
-        const id = newImageId();
-        await putImage({ id, uri, createdAt: Date.now() });
-        return id;
+        await putImage({ id: imageId, uri, createdAt: Date.now() });
+        return imageId;
     } catch (error) {
-        // Fall back to the raw URL: it may expire with the service, but the
-        // generation flow itself must never fail because of local storage.
         console.error('[saveGeneratedImage Error]:', error);
-        return url;
+        return null;
     }
 }
 
 /**
- * Resolve a design image ref to a displayable uri: URL-like values pass
- * through as-is (legacy / fallback entries); anything else is looked up in
- * the image store. Missing record or IDB error resolves to null (the caller
- * renders an empty placeholder) — never throws.
+ * Resolve an image ref (an id into the image store) to its data URI. A
+ * missing record or IDB error resolves to null (the caller renders an empty
+ * placeholder) — never throws.
  */
 export async function resolveImageRef(ref: string): Promise<string | null> {
-    if (isDirectUri(ref)) return ref;
     try {
         const db = await openDb();
         const record: StoredImage | undefined = await new Promise((resolve, reject) => {

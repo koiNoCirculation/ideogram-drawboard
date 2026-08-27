@@ -65,6 +65,7 @@ describe('translate', () => {
         expect(translate('en-US', 'homeNav')).toBe('Home');
         expect(translate('en-US', 'promptPlaceholder')).toBe('Generate new or upload & edit...');
         expect(translate('en-US', 'recentDesigns')).toBe('Recent Designs');
+        expect(translate('en-US', 'collections')).toBe('Collections');
         expect(translate('en-US', 'enterDescription')).toBe('Enter the description of your dreamed image');
         expect(translate('en-US', 'widthLabel')).toBe('Width (W)');
         expect(translate('en-US', 'heightLabel')).toBe('Height (H)');
@@ -92,6 +93,7 @@ describe('translate', () => {
         expect(translate('zh-CN', 'homeNav')).toBe('首页');
         expect(translate('zh-CN', 'promptPlaceholder')).toBe('生成新图片，或上传并编辑…');
         expect(translate('zh-CN', 'recentDesigns')).toBe('最近的设计');
+        expect(translate('zh-CN', 'collections')).toBe('合集');
         expect(translate('zh-CN', 'enterDescription')).toBe('描述你想要的图片');
         expect(translate('zh-CN', 'widthLabel')).toBe('宽度');
         expect(translate('zh-CN', 'heightLabel')).toBe('高度');

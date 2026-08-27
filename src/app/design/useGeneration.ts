@@ -62,8 +62,8 @@ export function useGeneration(
     rawPrompt: string,
 ) {
     const { t } = useI18n();
-    // All generated image refs (random ids into the IndexedDB image store, or
-    // raw URLs for legacy/fallback entries), in generation order.
+    // All generated image refs (ids into the IndexedDB image store — the only
+    // ref kind), in generation order.
     const [images, setImages] = useState<string[]>([]);
     // Refs resolved to displayable URIs, aligned by index with `images`.
     const imageUris = useImageUris(images);
@@ -177,7 +177,6 @@ export function useGeneration(
                 // until the next box edit.
                 bboxEditedRef.current = false;
             }
-            console.log(dataToGenerate)
             const formData = new FormData();
             // The service expects json_prompt as a plain string field, not a file
             // upload. Normalize first so style_description carries exactly one
@@ -206,9 +205,14 @@ export function useGeneration(
                 throw new Error(t('noImageUrl'));
             }
             // Persist the image as base64 in IndexedDB under a fresh random id
-            // (official Ideogram URLs expire). On fetch/CORS/IDB failure this
-            // resolves to the raw URL so the image still displays.
+            // (official Ideogram URLs expire). Persistence is the only image
+            // path: if it fails there is no ref to keep, so the image is
+            // dropped with an error instead of a raw-URL fallback.
             const ref = await saveGeneratedImage(url);
+            if (!ref) {
+                setGenerateError(t('imageSaveFailed'));
+                return;
+            }
             // Append to the history and switch the canvas to the new latest image.
             setImages((prev) => [...prev, ref]);
             setViewIndex(images.length);
@@ -266,8 +270,8 @@ export function useGeneration(
         setIsDownloading(true);
         setDownloadError(null);
         try {
-            // Resolve the ref (id -> data URI, URL passes through); an id whose
-            // IndexedDB record is gone has nothing to download yet either.
+            // Resolve the ref (id -> data URI); an id whose IndexedDB record is
+            // gone has nothing to download yet either.
             const uri = await resolveImageRef(ref);
             if (!uri) {
                 showDownloadError(t('noImageYet'));

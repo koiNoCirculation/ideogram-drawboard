@@ -1,7 +1,7 @@
 /**
- * e2e for the home page image wall (masonry of saved designs; run against
- * `expo start --web` on :8081). Verifies:
- *  - Home section: no wall title, wall is empty by default;
+ * e2e for the home page image wall (run against `expo start --web` on :8081).
+ * Verifies:
+ *  - Home section: "Collections" wall title, wall shows the bundled example collection;
  *  - Recent Designs section: title shown; masonry tiles only for designs
  *    that HAVE images (each showing its LATEST image); newest-first DOM
  *    order; tile aspect follows the saved canvas size;
@@ -12,14 +12,28 @@
  *  - no saved designs -> empty-state text.
  */
 const { chromium } = require('playwright');
+const fs = require('fs');
 const path = require('path');
 
 const BASE = 'http://localhost:8081';
 const TEMP = path.join(__dirname, '..', 'temp');
+// The Home section wall is now the bundled example collection; its size is
+// read from disk so the assertions track the file.
+const EXAMPLE_COUNT = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'example_collection', 'example.json'), 'utf8')).length;
 const PNG = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64'
 );
+// A second, distinct 1x1 PNG: designs reference images by their IndexedDB id
+// (the only ref kind), so the seeded records use two different data URIs to
+// keep "latest image" observable.
+const PNG_ALT = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64'
+);
+const DATA_URI = `data:image/png;base64,${PNG.toString('base64')}`;
+const DATA_URI_ALT = `data:image/png;base64,${PNG_ALT.toString('base64')}`;
 
 const mkDesign = (over) => ({
     prompt: {
@@ -37,12 +51,22 @@ const mkDesign = (over) => ({
     ...over,
 });
 
+// Saved designs reference images by their IndexedDB id (the only ref kind).
+const D1_A = 'img-e2e-home-d1a';
+const D1_B = 'img-e2e-home-d1b';
+const D2_A = 'img-e2e-home-d2a';
+const IDB_RECORDS = [
+    { id: D1_A, uri: DATA_URI, createdAt: 1 },
+    { id: D1_B, uri: DATA_URI_ALT, createdAt: 2 },
+    { id: D2_A, uri: DATA_URI, createdAt: 3 },
+];
+
 const DESIGNS = [
     // d1: newest, landscape 4:3, two images, has rawPrompt.
     mkDesign({
         id: 'd1',
         prompt: { ...mkDesign({}).prompt, high_level_description: 'HLD ONE' },
-        images: [`${BASE}/regress-img-1.png`, `${BASE}/regress-img-2.png`],
+        images: [D1_A, D1_B],
         size: { width: 800, height: 600 },
         updatedAt: 3000,
         rawPrompt: 'RAW ONE',
@@ -51,7 +75,7 @@ const DESIGNS = [
     mkDesign({
         id: 'd2',
         prompt: { ...mkDesign({}).prompt, high_level_description: 'HLD TWO' },
-        images: [`${BASE}/regress-img-3.png`],
+        images: [D2_A],
         size: { width: 600, height: 800 },
         updatedAt: 2000,
     }),
@@ -78,20 +102,43 @@ const DESIGNS = [
     };
 
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    await page.addInitScript((d) => {
+    // Seed localStorage (designs) and the IndexedDB image store (data URIs)
+    // before every navigation. Playwright awaits the init-script promise, so
+    // the records exist before the app resolves any ref.
+    await page.addInitScript(({ designs, idbRecords }) => {
         if (!localStorage.getItem('drawboard.designs'))
-            localStorage.setItem('drawboard.designs', JSON.stringify(d));
-    }, DESIGNS);
-    await page.route('**/regress-img-*.png', (route) =>
-        route.fulfill({ contentType: 'image/png', body: PNG }));
+            localStorage.setItem('drawboard.designs', JSON.stringify(designs));
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open('drawboard-images', 1);
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id' });
+            };
+            req.onsuccess = () => {
+                const db = req.result;
+                const tx = db.transaction('images', 'readwrite');
+                idbRecords.forEach((r) => tx.objectStore('images').put(r));
+                tx.oncomplete = () => { db.close(); resolve(); };
+                tx.onerror = () => reject(tx.error);
+            };
+            req.onerror = () => reject(req.error);
+        });
+    }, { designs: DESIGNS, idbRecords: IDB_RECORDS });
 
-    // ================= S1: home section — empty wall, no title =================
-    await section('S1 home section: wall empty, no title', async () => {
+    // ================= S1: home section — example wall under the Collections title =================
+    await section('S1 home section: example collection wall, Collections title', async () => {
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
-        await page.waitForTimeout(600);
-        // "Recent Designs" appears exactly once (the sidebar nav) — no wall title.
-        ok(await page.getByText('Recent Designs', { exact: true }).count() === 1, 'home: sidebar nav only (no wall title)');
-        ok(await page.locator('[data-testid^="wall-tile-"]').count() === 0, 'home: image wall empty');
+        await page.waitForTimeout(1200);
+        // "Recent Designs" appears exactly once (the sidebar nav) — the home
+        // wall carries its own "Collections" title instead.
+        ok(await page.getByText('Recent Designs', { exact: true }).count() === 1,
+            'home: sidebar nav only (no Recent Designs title)');
+        ok(await page.getByText('Collections', { exact: true }).count() === 1,
+            'home: Collections wall title shown');
+        // The default wall is now the bundled example collection (one tile per
+        // example), not empty.
+        ok(await page.locator('[data-testid^="wall-tile-"]').count() === EXAMPLE_COUNT,
+            `home: wall shows the example collection (${EXAMPLE_COUNT} tiles)`);
         await page.screenshot({ path: path.join(TEMP, 'shot_home_wall_home.png') });
     });
 
@@ -104,7 +151,8 @@ const DESIGNS = [
         const tile = (id) => page.locator(`[data-testid="wall-tile-${id}"]`);
         ok(await tile('d1').count() === 1 && await tile('d2').count() === 1, 'tiles for the two designs with images');
         ok(await tile('d3').count() === 0, 'no tile for the design without images');
-        ok(await page.locator('img[src*="regress-img-2"]').count() === 1, 'd1 tile shows its LATEST image (img-2)');
+        ok(await page.locator('[data-testid="wall-tile-d1"] img').getAttribute('src') === DATA_URI_ALT,
+            'd1 tile shows its LATEST image (resolved from IndexedDB)');
 
         // Newest first in DOM order (d1 before d2).
         const order = await page.evaluate(() => {

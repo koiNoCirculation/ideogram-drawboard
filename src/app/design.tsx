@@ -154,10 +154,11 @@ export default function DesignScreen() {
             // for a re-opened one); '' when neither recorded one.
             setRawPrompt(handoff?.rawPrompt ?? stored?.rawPrompt ?? '');
 
-            // When re-opening a saved design, restore its generated image
-            // history and show the latest one on the canvas.
-            if (stored) {
-                generation.restoreImages(stored.images);
+            // Restore the generated-image history (show the latest): from the
+            // stored design on reopen, or a handoff seed (an example's image).
+            const restoredImages = handoff?.images ?? stored?.images;
+            if (restoredImages) {
+                generation.restoreImages(restoredImages);
             }
         } catch (e) {
             console.error('Failed to parse promptData', e);

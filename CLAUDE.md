@@ -30,3 +30,6 @@ when some condition, it should do .....
 ---Start of test logic---
 e.g: you should go to xxx page, click button, wait for request, and see xxx, blah...
 ```
+
+Environment:
+Playwright CLI with broser support is installed in global node environment.

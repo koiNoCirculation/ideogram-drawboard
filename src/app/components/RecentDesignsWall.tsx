@@ -4,16 +4,15 @@ import { Design } from '../services/designStore';
 
 /**
  * The masonry (tile-collage) image wall at the bottom of the home page.
- * Inactive (Home section) it renders nothing — the wall is intentionally
- * empty there for now. Active (Recent Designs section) it renders the section
- * title plus one tile per saved design that has generated images (the most
- * recent one). Hovering a tile overlays the design's ORIGINAL prompt
- * (rawPrompt, falling back to high_level_description for old designs — data,
- * never translated); pressing opens the design.
+ * Renders one tile per Design that has at least one image (each showing its
+ * latest one) — the Home section feeds it the bundled example collection,
+ * the Recent Designs section the saved designs. An optional section title is
+ * shown above the masonry when `titleText` is non-empty (Home: "Collections",
+ * Recent Designs: "Recent Designs"). Hovering a tile overlays the design's ORIGINAL
+ * prompt (rawPrompt, falling back to high_level_description for old designs —
+ * data, never translated); pressing opens the design.
  */
 interface RecentDesignsWallProps {
-    active: boolean;
-    /** Most-recent-first (loadDesigns order). */
     designs: Design[];
     /** Resolved image uris aligned by index with `designs` (null = pending/missing). */
     uris: (string | null)[];
@@ -28,7 +27,7 @@ const MIN_COLUMNS = 3;
 const MAX_COLUMNS = 6;
 
 export function RecentDesignsWall({
-    active, designs, uris, titleText, emptyText, onOpen,
+    designs, uris, titleText, emptyText, onOpen,
 }: RecentDesignsWallProps) {
     const [containerWidth, setContainerWidth] = useState(0);
 
@@ -40,10 +39,6 @@ export function RecentDesignsWall({
             .filter((tile) => tile.design.images.length > 0),
         [designs, uris],
     );
-
-    if (!active) {
-        return <View />;
-    }
 
     const columnCount = containerWidth > 0
         ? Math.min(MAX_COLUMNS, Math.max(MIN_COLUMNS, Math.floor(containerWidth / MIN_COLUMN_PX)))
@@ -73,7 +68,7 @@ export function RecentDesignsWall({
 
     return (
         <View style={styles.wallArea}>
-            <Text style={styles.title}>{titleText}</Text>
+            {titleText ? <Text style={styles.title}>{titleText}</Text> : null}
             {tiles.length === 0 ? (
                 <Text style={styles.empty}>{emptyText}</Text>
             ) : (

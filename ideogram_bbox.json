@@ -1,0 +1,44 @@
+{
+  "high_level_description": "A bold event poster for a jazz night called 'Blue Note Sessions' at The Velvet Room, Saturday August 9th.",
+  "style_description": {
+    "aesthetics": "moody, retro, sophisticated, 1960s jazz club aesthetic",
+    "lighting": "dramatic, deep shadows, warm spotlight glow",
+    "medium": "graphic_design",
+    "art_style": "vintage poster design, textured paper, bold typography, muted color palette with warm accents",
+    "color_palette": ["#1A1A2E", "#16213E", "#E8C97A", "#D4A843", "#F5F0E8", "#8B4513"]
+  },
+  "compositional_deconstruction": {
+    "background": "Deep navy and near-black background with subtle aged paper texture and faint horizontal grain lines.",
+    "elements": [
+      {
+        "type": "obj",
+        "bbox": [150, 200, 650, 800],
+        "desc": "A silhouetted jazz trumpeter in side profile, mid-performance, instrument raised. Warm golden spotlight illuminates from above, casting dramatic shadows. Stylized, slightly abstract illustration style."
+      },
+      {
+        "type": "text",
+        "bbox": [30, 50, 140, 950],
+        "text": "BLUE NOTE SESSIONS",
+        "desc": "Large bold all-caps serif headline in warm golden-yellow, spanning the full width near the top of the poster."
+      },
+      {
+        "type": "text",
+        "bbox": [660, 100, 760, 900],
+        "text": "Live jazz every Saturday night",
+        "desc": "Medium-weight italic serif subheading in off-white, centered beneath the main title."
+      },
+      {
+        "type": "text",
+        "bbox": [820, 200, 900, 800],
+        "text": "THE VELVET ROOM",
+        "desc": "Smaller all-caps sans-serif venue name in warm gold, centered near the bottom."
+      },
+      {
+        "type": "text",
+        "bbox": [900, 300, 970, 700],
+        "text": "SAT · AUGUST 9",
+        "desc": "Small light-weight serif date text in off-white, near the bottom of the poster."
+      }
+    ]
+  }
+}

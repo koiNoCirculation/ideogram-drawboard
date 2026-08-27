@@ -4,12 +4,10 @@
  * generation endpoint is mocked with page.route. Designs / settings / IDB
  * records are seeded in-page (single-payload evaluate — page functions can't
  * see module-level variables, so the design id travels inside the payload).
- * NOTE (S4): the mock image URL fails only for saveGeneratedImage's fetch;
- * a URL that 500s on every load makes RN-web's Image drop itself from the DOM
- * (ERRORED state, no defaultSource), so the browser's own <img> loads must
- * succeed for the fallback image to stay visible.
- * Temporary file — not committed.
- * takes ONE arg). Temporary file — not committed.
+ * NOTE (S4): when saveGeneratedImage's conversion fetch fails there is no
+ * raw-URL fallback — the image is dropped with an error line, so the failing
+ * URL never reaches the browser's own <img> loads (a URL that 500s on every
+ * load would make RN-web's Image drop itself from the DOM, ERRORED state).
  */
 const { chromium } = require('playwright');
 
@@ -102,6 +100,19 @@ async function gotoSeeded(page, url, payload) {
 const canvasImgSrc = (page) =>
     page.locator('[data-testid="design-canvas"] img').first().getAttribute('src');
 
+// Read all IndexedDB image-store records. Note: loading the home page (done by
+// gotoSeeded) also persists the bundled EXAMPLE images here under stable ids,
+// so "what this section stored" must be filtered, not counted raw.
+const idbRecords = (page) => page.evaluate(() => new Promise((resolve, reject) => {
+    const req = indexedDB.open('drawboard-images', 1);
+    req.onsuccess = () => {
+        const all = req.result.transaction('images', 'readonly').objectStore('images').getAll();
+        all.onsuccess = () => resolve(all.result);
+        all.onerror = () => reject(all.error);
+    };
+    req.onerror = () => reject(req.error);
+}));
+
 (async () => {
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -140,18 +151,12 @@ const canvasImgSrc = (page) =>
         await p.waitForTimeout(1200);
         ok(await canvasImgSrc(p) === DATA_URI, 'canvas shows the generated image as a base64 data URI');
         ok(!(await canvasImgSrc(p)).includes('iseed-img'), 'raw URL is not stored as the image ref');
-        const stored = await p.evaluate(() => new Promise((resolve, reject) => {
-            const req = indexedDB.open('drawboard-images', 1);
-            req.onsuccess = () => {
-                const tx = req.result.transaction('images', 'readonly');
-                const all = tx.objectStore('images').getAll();
-                all.onsuccess = () => resolve(all.result);
-                all.onerror = () => reject(all.error);
-            };
-            req.onerror = () => reject(req.error);
-        }));
-        ok(stored.length === 1 && /^img-/.test(stored[0].id) && stored[0].uri === DATA_URI,
-            'exactly one IDB record with an img-* id holding the data URI');
+        const stored = await idbRecords(p);
+        // The home page load also persisted the bundled example images (stable
+        // img-design-* ids) — filter by the generated 1x1 data URI instead.
+        const generated = stored.filter((r) => r.uri === DATA_URI);
+        ok(generated.length === 1 && /^img-/.test(generated[0].id),
+            'exactly one IDB record with an img-* id holding the generated data URI');
         await p.close();
     });
 
@@ -181,55 +186,65 @@ const canvasImgSrc = (page) =>
         await p.close();
     });
 
-    // ---------- S4: conversion failure falls back to the raw URL ----------
-    await section('S4 conversion failure falls back to the raw URL', async () => {
+    // ---------- S4: conversion failure drops the image (no URL fallback) ----------
+    await section('S4 conversion failure drops the image with an error', async () => {
         const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
         const failUrl = `${BASE}/iseed-fail.png`;
         await p.route('**/v1/ideogram-v4/generate', (route) => route.fulfill({
             contentType: 'application/json',
             body: JSON.stringify({ data: [{ url: failUrl }] }),
         }));
-        // The conversion fetch (first hit) fails -> saveGeneratedImage must keep
-        // the raw URL. Later hits are the browser's own <img> loads, which
-        // succeed — a URL that 500s on every load makes RN-web's Image drop
-        // itself from the DOM entirely (ERRORED state, no defaultSource).
+        // The conversion fetch inside saveGeneratedImage fails -> it returns
+        // null, so the image is dropped with an error line (no raw-URL ref).
+        // The URL is fetched exactly once (the conversion) and never rendered.
         let failImgHits = 0;
         await p.route('**/iseed-fail.png', (route) => {
             failImgHits++;
-            if (failImgHits === 1) {
-                return route.fulfill({ status: 500, contentType: 'text/plain', body: 'boom' });
-            }
-            return route.fulfill({ contentType: 'image/png', body: PNG });
+            return route.fulfill({ status: 500, contentType: 'text/plain', body: 'boom' });
         });
         await gotoSeeded(p, `${BASE}/design?id=${DESIGN_ID}`, {
             settings: mkSettings(),
             handoff: { promptData: JSON.stringify(PROMPT), size: { width: 800, height: 600 } },
         });
+        // Baseline: the home-page load persisted the bundled example images;
+        // the failed generation must add NO record on top of them.
+        const countBefore = (await idbRecords(p)).length;
         await p.getByText('Generate', { exact: true }).first().click();
         await p.waitForTimeout(1200);
-        ok(await canvasImgSrc(p) === failUrl, 'failed conversion keeps the raw URL as the image ref');
-        ok(await p.locator('[data-testid="history-thumb-0"] img').getAttribute('src') === failUrl,
-            'history thumbnail also keeps the raw URL');
-        ok(await p.getByText('Generated (1)').count() === 1, 'image still enters the history despite the failure');
+        ok(await p.locator('[data-testid="design-canvas"] img').count() === 0,
+            'no canvas image when the conversion fetch fails');
+        ok(await p.getByText('Image generated, but saving it locally failed — try again.', { exact: true }).count() === 1,
+            'error line names the failed local save');
+        ok(await p.getByText('Generated (1)').count() === 0, 'failed image does not enter the history');
+        ok((await idbRecords(p)).length === countBefore, 'no new IDB record for the failed image');
+        ok(failImgHits === 1, 'the URL was fetched once (conversion only), never rendered');
         await p.locator('[data-testid="save-button"]').click();
         await p.waitForTimeout(500);
         const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('drawboard.designs') || '[]'));
         const d = saved.find((x) => x.id === DESIGN_ID);
-        ok(d && d.images.length === 1 && d.images[0] === failUrl, 'saved design stores the fallback URL');
+        ok(d && d.images.length === 0, 'saved design stores no image ref');
         await p.close();
     });
 
-    // ---------- S5: legacy URL designs pass through untouched ----------
-    await section('S5 legacy URL pass-through', async () => {
+    // ---------- S5: legacy URL refs no longer resolve (IDB-only refs) ----------
+    await section('S5 legacy URL refs resolve to placeholders', async () => {
         const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
         const designs = [{
             id: 'legacy-design', prompt: PROMPT, images: [LEGACY_URL],
             size: { width: 800, height: 600 }, updatedAt: 1000,
         }];
-        await p.route('**/legacy-img.png', (route) =>
-            route.fulfill({ contentType: 'image/png', body: PNG }));
+        let urlHits = 0;
+        await p.route('**/legacy-img.png', (route) => {
+            urlHits++;
+            return route.fulfill({ contentType: 'image/png', body: PNG });
+        });
         await gotoSeeded(p, `${BASE}/design?id=legacy-design`, { designs });
-        ok(await canvasImgSrc(p) === LEGACY_URL, 'legacy design renders its original URL unmodified');
+        ok(await p.locator('[data-testid="design-canvas"] img').count() === 0,
+            'legacy URL ref renders no canvas image (IDB lookup misses)');
+        ok(urlHits === 0, 'the legacy URL is never fetched for display');
+        ok(await p.getByText('Generated (1)').count() === 1, 'history still lists the unresolvable ref');
+        ok(await p.locator('[data-testid="history-thumb-0"] img').count() === 0,
+            'history thumbnail is the empty placeholder');
         await p.close();
     });
 
@@ -241,8 +256,11 @@ const canvasImgSrc = (page) =>
             { id: 'legacy-design', prompt: PROMPT, images: [LEGACY_URL], size: { width: 800, height: 600 }, updatedAt: 2000 },
             { id: 'noimg-design', prompt: PROMPT, images: [], size: { width: 800, height: 600 }, updatedAt: 1000 },
         ];
-        await p.route('**/legacy-img.png', (route) =>
-            route.fulfill({ contentType: 'image/png', body: PNG }));
+        let urlHits = 0;
+        await p.route('**/legacy-img.png', (route) => {
+            urlHits++;
+            return route.fulfill({ contentType: 'image/png', body: PNG });
+        });
         await gotoSeeded(p, `${BASE}/`, {
             designs,
             idbRecords: [{ id: SEED_IDB_ID, uri: DATA_URI, createdAt: 1 }],
@@ -252,8 +270,11 @@ const canvasImgSrc = (page) =>
         await p.waitForTimeout(600);
         ok(await p.locator('[data-testid="wall-tile-idb-design"] img').getAttribute('src') === DATA_URI,
             'IDB-backed wall tile shows the data URI');
-        ok(await p.locator('[data-testid="wall-tile-legacy-design"] img').getAttribute('src') === LEGACY_URL,
-            'legacy wall tile keeps its URL');
+        ok(await p.locator('[data-testid="wall-tile-legacy-design"]').count() === 1,
+            'legacy-URL design still gets a wall tile (clickable)');
+        ok(await p.locator('[data-testid="wall-tile-legacy-design"] img').count() === 0,
+            'legacy-URL tile shows the placeholder, not the URL');
+        ok(urlHits === 0, 'the legacy URL is never fetched for the wall');
         ok(await p.locator('[data-testid="wall-tile-noimg-design"]').count() === 0,
             'image-less design gets no wall tile');
         await p.close();

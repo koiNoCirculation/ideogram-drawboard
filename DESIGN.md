@@ -18,8 +18,8 @@ src/
     index.tsx              首页：输入描述、选比例/尺寸，最近设计列表
     design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
     types.ts               RefinedPrompt / CanvasElement / isEmptyElement
-    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff（含原始 prompt）→跳转；瞬态错误行）
-    useImageUris.ts        图片 ref→可显示 uri 的异步解析 hook（IndexedDB id 查库、URL 透传，按索引对齐；首页卡片与设计页共用）
+    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff（含原始 prompt）→跳转；红色 LLM 错误行：重试中 5 秒自动消失、最终失败持久到下次提交）
+    useImageUris.ts        图片 ref→可显示 uri 的异步解析 hook（ref 恒为 IndexedDB id，查库得 data URI，按索引对齐；首页卡片与设计页共用）
     design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
       constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
       canvas.ts            纯几何：snapToGridValue / clampBbox / bboxToGeometry / computeAlignGuides / withVisibleElementsOnly（生成前剔除隐藏元素）
@@ -29,7 +29,7 @@ src/
       useElementEditing.ts     右键菜单（复制/粘贴/编辑/删除）+ desc/text 编辑对话框（含字体选项）
       useGeneration.ts     生成（设置校验→空元素校验→按需改写 desc→规范化→请求）、保存、图片历史
     components/
-      RecentDesignsWall.tsx 首页图片墙（masonry + 悬停原始 prompt 叠加，props 驱动，见「index.tsx」节）
+      RecentDesignsWall.tsx 首页图片墙（masonry + 悬停原始 prompt 叠加，props 驱动；Home 分区=示例集（标题 "Collections"）、Recent 分区=已存设计（标题 "Recent Designs"），标题 `titleText` 非空才渲染，见「index.tsx」节）
       ElementBox.tsx       画布上的单个元素框（拖动、四角缩放、右键菜单载体）
       ColorPalette.tsx     调色板（色块 + 添加按钮 + 弹出编辑 popover，portal 到 body）
       ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
@@ -51,9 +51,10 @@ src/
       PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
       IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
       imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
-      imageStore.ts        生成图持久化：生成后抓图转 base64 data URI 存 IndexedDB（随机 id 为键）+ 按 ref 解析（URL 透传），见「imageStore.ts」节
+      imageStore.ts        生成图持久化：生成后抓图转 base64 data URI 存 IndexedDB（随机 id 为键，id 是唯一 ref 种类，无 URL 透传）+ 按 id 查库解析，见「imageStore.ts」节
       settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
-      designStore.ts       localStorage 设计持久化（{prompt, images, rawPrompt} 框架）+ 导航 handoff（未保存设计按 id 暂存，含原始 prompt）+ 返回首页导航标志 + newDesignId
+      designStore.ts       localStorage 设计持久化（{prompt, images, rawPrompt} 框架）+ 导航 handoff（未保存设计按 id 暂存，含原始 prompt 与可选种子 images）+ 返回首页导航标志 + newDesignId
+      exampleCollection.ts 首页示例集：fetch public/example_collection/example.json，示例图先持久化进 IndexedDB 图片库（稳定 id，check-then-store）+ 映射为 Design 形状（sizeFromRatio / exampleToDesign），见「index.tsx」节
       color.ts             hex/RGB/HSV 互转与 clamp 工具
     test/
       services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload、imageStore）
@@ -87,7 +88,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### Design（designStore.ts）
 保存的设计 = `{ id, prompt: RefinedPrompt, images: string[], size: {width, height}, updatedAt, rawPrompt? }`，存于 `localStorage['drawboard.designs']`，按 `updatedAt` 倒序。`size` 无法从 prompt 恢复所以单独存；`id` 用于重复保存时 upsert 同一条记录。`rawPrompt` = 用户输入的原始一句话 prompt（Show Prompt 对话框左栏展示用；旧设计无此字段，左栏显示为空）。
-`images` 的每个元素是**图片 ref**：新设计存生成时的随机图片 id（`img-…`，对应 IndexedDB 里的 base64 data URI，见「imageStore.ts」节）；**旧设计或转换失败回退时存原始 URL**（显示时原样透传）。展示/下载前一律经 `resolveImageRef` 解析（id → IDB 查 data URI，URL → 原样返回，查不到 → null 渲染空占位）。
+`images` 的每个元素是**图片 ref = IndexedDB 图片库的 id**（`img-…`，对应 IDB 里的 base64 data URI，见「imageStore.ts」节）——**id 是唯一 ref 种类，无 URL 透传、转换失败也不回退存 URL**（失败则不入库、该图不进 `images`）。展示/下载前一律经 `resolveImageRef` 解析（id → IDB 查 data URI，查不到 → null 渲染空占位；**旧设计遗留的 URL ref 查不到库，一律显示空占位**）。
 
 ## 设置（Settings）
 
@@ -109,7 +110,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 **缺失校验** `getMissingSettings`：LLM name 恒必填；自建后端时 endpoint 必填、厂商时 secret key 必填（image 同理：Custom 时 endpoint 必填、Official 时 secret key 必填）。
 - 设计页点 **Generate**：任何一项缺失 → 拒绝生成，错误行显示 "Cannot generate — missing settings: …"，不发起任何请求。
-- 首页点 **开始设计**：LLM 相关项缺失 → Alert 提示，不发起 LLM 请求。
+- 首页点 **开始设计**：LLM 相关项缺失 → 输入条上方红色错误行列出缺项（持久到下次提交，不用 Alert——Alert.alert 在 web 上是 no-op），不发起 LLM 请求。
 
 ## i18n（界面国际化 en-US / zh-CN）
 
@@ -118,19 +119,20 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - **`src/i18n/`**：`translations.ts` 双语词表——`enUS` 为基准（~74 个 key），`zhCN` 类型是 `Record<keyof typeof enUS, string>`，编译期强制 key 对齐、不许缺值；另导出 `Locale`（`'en-US' | 'zh-CN'`）、`LOCALES`、`DEFAULT_LOCALE = 'en-US'`、`LOCALE_STORAGE_KEY = 'drawboard.locale'`、`LOCALE_FLAGS`（🇺🇸 / 🇨🇳）。`I18nContext.tsx`：`I18nProvider`（根布局 `_layout.tsx` 包裹 Stack）+ `useI18n()`（`locale` / `setLocale` / `t`）；`t(key, vars?)` 做 `{name}` 占位替换，未知 key 原样透传（不崩）。
 - **locale 持久化**：选择写 `localStorage['drawboard.locale']`，刷新/重开保持；`loadLocale` 读非法值（或无存储）回退 `en-US`。
 - **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗按钮（flag-emoji 风格内联 SVG data-URI，按钮 testID `lang-switcher`、旗帜本体 `lang-flag-<locale>`；不用区域指示符 emoji——缺字体时渲染成 "US"/"CN" 字母，且 RN-web `<Image>` 对该 data-URI 不出图，故用带 CSS background 的普通 View，同画布网格机制），点击开下拉（两个选项各带小国旗 + 语言自称文案——`LOCALE_NAMES`：en-US → "English"、zh-CN → "中文"，自称不随当前 locale 变化；testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
-- **覆盖**：首页（侧栏 Home/Recent Designs 导航、图片墙标题/空态、输入区标题、W/H/自定义、prompt 占位符、开始按钮无障碍标签（开始设计/处理中）、Alert 与重试提示）、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签与按钮——设置对话框的保存按钮用独立 key `saveSettings`（en "Save Settings" / zh "保存设置"，不与设计页 Save 的 `save`（zh "保存设计"）混用）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
+- **覆盖**：首页（侧栏 Home/Recent Designs 导航、图片墙标题/空态、输入区标题、W/H/自定义、prompt 占位符、开始按钮无障碍标签（开始设计/处理中）、红色 LLM 错误行（缺设置 `missingSettingsAlert`、重试 `refineRetrying`、全部失败 `refineAllFailed`、请求失败的原始错误文字））、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签与按钮——设置对话框的保存按钮用独立 key `saveSettings`（en "Save Settings" / zh "保存设置"，不与设计页 Save 的 `save`（zh "保存设计"）混用）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
 
 ## 页面与导航
 
 `index.tsx`（默认页）⇄ `design.tsx`。**导航只在 URL 里带设计 `id`**——LLM 改写后的 prompt 太大，放 query 参数会触发 HTTP 431（请求行过长），所以走 localStorage handoff（见下）。
 - 首页「开始设计」→ 生成新设计 id（`newDesignId`）→ `setDesignHandoff(id, { promptData, size, rawPrompt })` 把 LLM 结果、画布尺寸与用户原始 prompt 暂存到 localStorage（key `drawboard.handoff`，按 id 的映射，上限 10 条、超了逐出最旧）→ `router.push('/design', { id })`。handoff 读时不消费，未保存设计的刷新/前进后退仍能解析；Save 成功时 `clearDesignHandoff(id)`（store 成为唯一事实来源，避免重开时读到编辑前的旧 payload）。
+- 首页图片墙（Home 模式）点示例 tile → 同样 `newDesignId` + `setDesignHandoff(id, { promptData, size, rawPrompt, images })`（`images` 为可选种子，携带示例参考图的 **IDB id**）→ 跳转；设计页加载时 `images` 取 `handoff?.images ?? stored?.images` 恢复图片历史。示例不落 store（用户 Save 才落）。
 - 首页图片墙（Recent Designs 模式）点 tile → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
 - 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
 - 设计页的返回按钮在 **Stack 页头**（"design" 标题左侧），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
 
 ## index.tsx（首页）
 
-页面文件只做状态声明与组合；「开始设计」流程（设置校验 → refine 重试 → handoff → 跳转 + 瞬态错误行）在 `useStartDesign.ts`（同设计页 hooks 的拆分模式，index.tsx 因此保持 <400 行）；下方图片墙是独立组件 `RecentDesignsWall.tsx`（见下）。
+页面文件只做状态声明与组合；「开始设计」流程（设置校验 → refine 重试 → handoff → 跳转 + 红色 LLM 错误行）在 `useStartDesign.ts`（同设计页 hooks 的拆分模式，index.tsx 因此保持 <400 行）；下方图片墙是独立组件 `RecentDesignsWall.tsx`（见下）。
 
 布局（复刻 Ideogram 界面）：整幅白底（本页 `headerShown: false`，无 Stack 页头），左侧边栏 + 右侧主列。
 
@@ -143,16 +145,16 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
    - 选 custom 后 W/H 互不联动，长宽比取 `${W}:${H}`。
 3. W/H 行（居中；输入 testID `width-input` / `height-input`）。
 4. **prompt 输入条**（Ideogram 式圆角胶囊，高 56；占位符 `promptPlaceholder` "Generate new or upload & edit..."；testID `prompt-input`）；条内右侧嵌 **40px 黑色圆形上箭头按钮**（lucide `ArrowUp`，testID `start-design-button`）作为「开始设计」触发器——处理中显示白色 ActivityIndicator，按钮文案（`startDesign` / `processing`）仅作无障碍标签（aria-label）。
-5. `useStartDesign` 流程：prompt 非空且 LLM 设置项齐全（缺失则 Alert 列出缺项并停止）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串。**JSON 格式校验 + 重试**：LLM（temperature 1.0）可能返回无法 `JSON.parse` 的回答，每次尝试后立即解析，失败时在输入条上方显示临时错误条（**5 秒后自动消失**，新的失败重新计时）并重试，最多 `REFINE_MAX_ATTEMPTS = 3` 次，全部失败弹 Alert 不跳转。校验通过 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。其他失败（网络等）弹 Alert。
+5. `useStartDesign` 流程：prompt 非空且 LLM 设置项齐全（缺失则输入条上方**红色错误行**列出缺项并停止，不发起请求）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串。**JSON 格式校验 + 重试**：LLM（temperature 1.0）可能返回无法 `JSON.parse` 的回答，每次尝试后立即解析，失败时在输入条上方显示红色错误条（"retrying" 期间 **5 秒后自动消失**，新的失败重新计时）并重试，最多 `REFINE_MAX_ATTEMPTS = 3` 次，全部失败后错误条转为持久（不自动消失、下次提交才清除）不跳转。校验通过 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。**LLM 端点未设置正确时的其余失败**（网络不可达 `Failed to fetch`、HTTP 错误 `LLM API Error (状态码): 响应体`、system prompt 加载失败）同样在红色错误行显示错误文字、持久到下次提交。`Alert.alert` 在 RN-web 上是 **no-op**（浏览器收不到 dialog），所以所有 LLM 侧失败都走红色错误行（testID `refine-error`）而非 Alert；错误行样式：浅红底 + 1px #E53935 边框、文字 #E53935，位于输入条上方；每次提交开始时先清除上一轮错误。
 6. 页面右上角齿轮按钮（绝对定位）：打开设置对话框；齿轮左侧紧邻 `LanguageSwitcher` 语言切换器（见「i18n」节）。
 
-**图片墙**（`components/RecentDesignsWall.tsx`，props 驱动，主列下方占满宽度）：
-- **Home 模式（默认）**：墙留空、不显示标题（内容后续再补）。
+**图片墙**（`components/RecentDesignsWall.tsx`，props 驱动，主列下方占满宽度；组件本身无 `active` prop、标题 `titleText` 非空才渲染，两份数据由 index.tsx 按 `activeSection` 切换传入）：
+- **Home 模式（默认）**：显示打包的**示例集**——`exampleCollection.ts` 挂载时 fetch `public/example_collection/example.json`（每项 = 原始 `prompt` + `jsonprompt` + 生成图 `url`），**先把每张示例图抓图持久化进 IndexedDB 图片库**（稳定 id = `img-<url 文件名>`，check-then-store：已在库则不重复抓，约 2MB base64 转换每浏览器只做一次；单张失败该条目 `imageId=null`、无 tile，不影响其余），再经 `exampleToDesign` 映射为 `Design` 形状（id 取 url 文件名、`images=[imageId]`（持久化失败为空数组）、`rawPrompt=prompt`、size 由 `aspect_ratio` 经 `sizeFromRatio` 换算，长边 1024 基线）；**显示标题 `collections`**（en "Collections" / zh "合集"，与 Recent 区标题同款样式，同时把图片墙与上方 prompt 输入区在视觉上隔开）；加载失败（网络/非 2xx/非数组）回退空数组，显示 `noExamples` 空态（标题仍显示）。
 - **Recent Designs 模式**：显示标题 `recentDesigns`（与侧边栏项同文案）+ masonry 图片墙——内容为所有已存设计（`loadDesigns()` 倒序）的**最新一张图**；无图的设计不显示；无任何设计时显示 `noDesigns` 占位文案。
 - **masonry（JS 贪心）**：每个 tile 放入当前最矮列；列数按容器宽（最小列宽 ~220px，3–6 列），列宽均分；tile 高 = 列宽 × `size.h/size.w`（生成图与画布尺寸一致，缺失按 1:1）；渲染为 `cols` 个纵列横排。
-- **tile**：`images.length > 0` 的设计取其最后一张 ref，经 `useImageUris` 统一解析（IDB data URI 或 URL 透传，解析中为灰色占位块）；Pressable testID `wall-tile-<id>`，圆角 8。
+- **tile**：`images.length > 0` 的设计取其最后一张 ref（IDB id），经 `useImageUris` 统一解析（IDB 查 data URI；解析中为灰色占位块，旧设计遗留的 URL ref 查不到库同样渲染空占位——tile 本身保留、可点开）；Pressable testID `wall-tile-<id>`，圆角 8。
 - **悬停叠加**：悬停（RN-web `onHoverIn/onHoverOut`）时 tile 上显示黑色 65% 半透明叠加层（testID `wall-tile-overlay`），居中白字显示**原始 prompt**（`rawPrompt`，旧设计无此字段时回退 `high_level_description`；均为数据不翻译）；移出消失。
-- **点击**：`markNavigationFromHome` + `router.push /design?id` 进入对应设计（同旧侧边栏卡片）。
+- **点击**：Recent 分区 → `markNavigationFromHome` + `router.push /design?id` 重开对应已存设计；Home 分区（示例）→ `newDesignId()` 生成新 id，把示例的 `promptData`（`jsonprompt` 序列化）/`size`/`rawPrompt`（原始 `prompt`）/`images`（`[imageId]`，示例图的 IDB id）写入 handoff（`setDesignHandoff`）+ `markNavigationFromHome` + 跳转——以该示例**开一个全新可编辑设计**（画布铺参考图、元素框、"Generated (1)" 历史、Show Prompt 双栏），示例本身不落设计 store（用户 Save 才落）。
 
 ## design.tsx（设计页）
 
@@ -160,7 +162,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 
 ### 初始化
 - `designId`：首页导航恒带 `id`（新设计由首页生成、重开设计复用原 id）；裸访问 /design 无 id 时现场生成（无数据，显示占位）。
-- 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；store 里的 `images` → 图片历史，`viewIndex` 指向最新一张。
+- 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；`images` → 图片历史（handoff 的 `images` 优先——从首页示例开的设计由此种子其参考图——否则取 store 里的 `images`），`viewIndex` 指向最新一张。
 - 页头：可编辑标题 + 右侧 `LanguageSwitcher`（见「i18n」节）+ 设置齿轮按钮（打开设置对话框，见「设置」节）。返回按钮在 Stack 页头"design" 标题左侧（见「页面与导航」节）。
 
 ### 元数据栏（六个部分，各 ≤20% 宽度，内部换行）
@@ -234,11 +236,11 @@ Photoshop 风格图层列表，绝对定位于画布区右下角（距边缘 12p
    重置时机刻意放在**合并成功之后**：重写调用失败或返回非法 JSON 时保留标记，下次 Generate 自动重试；重写成功但生成 API 失败也不需重写（desc 已与当前 bbox 一致且已写回 `refinedData`）。
 3. **合并**：只把改写回来的 `desc` 逐个元素合并回本地 caption（要求 index 对应、type 相同、desc 为非空字符串，否则保留原元素）——画布 bbox 永远是唯一事实来源。
 4. **规范化**：`withVisibleElementsOnly`（剔除隐藏元素，见「图层列表」节）+ `normalizePromptForIdeogram`（见 services）后 `JSON.stringify` 为 `json_prompt` 字符串字段，连同 `response_type=url`、`resolution=WxH` POST 到 `/v1/ideogram-v4/generate`。
-5. **请求与结果**：POST 到设置中的图像生成端点（`getImageUrl`，Official = 官方 API、Custom = 本地/私有化端点）+ 路径 `/v1/ideogram-v4/generate`，密钥非空时带 `Api-Key` 头；取 `data[0].url` 后经 `saveGeneratedImage` 转 base64 持久化（见「imageStore.ts」节，**任何失败回退存原始 URL**、不阻塞生成），把返回的 ref 追加进 `images` 并把画布切到新图；失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。
+5. **请求与结果**：POST 到设置中的图像生成端点（`getImageUrl`，Official = 官方 API、Custom = 本地/私有化端点）+ 路径 `/v1/ideogram-v4/generate`，密钥非空时带 `Api-Key` 头；取 `data[0].url` 后经 `saveGeneratedImage` 转 base64 持久化（见「imageStore.ts」节）——**持久化是唯一图片路径，无原始 URL 回退**：失败（fetch/CORS/非 2xx/IDB 不可用）返回 null，该图被丢弃（不进 `images`、不进历史条），错误行显示 `imageSaveFailed`（"Image generated, but saving it locally failed — try again."）；成功则把返回的 id 追加进 `images` 并把画布切到新图。其他失败显示错误文字；生成中按钮显示 ActivityIndicator 并禁用。
 
 ### 下载图片（Download Image）
 Save/Generate 行中 Generate 右侧的按钮，下载**画布当前选中**的那张生成图（历史条选中的缩略图，默认最新一张）：
-- 有选中图 → 先 `resolveImageRef` 把 ref 解析成可显示 uri（IDB data URI 或透传 URL；解析不到按「无图可下」处理）→ `downloadImage`（services/imageDownload.ts）fetch 该 uri（data URI 同样可 fetch）→ blob → 临时 `<a download>`（文件名 `{designId}.png`）点击触发浏览器保存窗口；下载中按钮显示 ActivityIndicator 并禁用；fetch 失败同样走红悬浮提示。
+- 有选中图 → 先 `resolveImageRef` 把 ref（IDB id）解析成可显示 uri（IDB 查 data URI；解析不到——含旧设计遗留的 URL ref——按「无图可下」处理）→ `downloadImage`（services/imageDownload.ts）fetch 该 uri（data URI 同样可 fetch）→ blob → 临时 `<a download>`（文件名 `{designId}.png`）点击触发浏览器保存窗口；下载中按钮显示 ActivityIndicator 并禁用；fetch 失败同样走红悬浮提示。
 - 还没有任何生成图（首页重写后未生成、或历史设计无图）→ 按钮仍可用，点击弹**红色悬浮提示**（视口顶部居中、Stack 页头下方，`pointerEvents` 关闭）「No image has been generated yet — generate one first, then download.」，**5 秒后自动消失**（新的失败重新计时）。
 - `refinedData` 缺失时与 Save/Generate 一样禁用。
 
@@ -290,18 +292,17 @@ Save/Generate 行中 Download Image 右侧的按钮（12px 间距），点击弹
 - `color_palette`：过滤非法 hex、转大写、截断到 16 个。
 
 ### imageStore.ts
-生成图本地持久化（官方 Ideogram 返回的图 URL 有过期时间，所以生成后立即抓图存本地）：
+生成图本地持久化（官方 Ideogram 返回的图 URL 有过期时间，所以生成后立即抓图存本地）。**ref 恒为 IndexedDB id，URL/data URI/根相对路径一律不再透传**（旧设计的 URL ref 查不到库 → 空占位）；打包的示例图同样先持久化进本库（`exampleCollection.ts`，稳定 id `img-<url 文件名>`），首页示例墙与"从示例开设计"走同一套 IDB ref：
 - IndexedDB 库 `drawboard-images`（version 1，object store `images`，keyPath `id`），记录 `{ id, uri, createdAt }`，`uri` 为完整 `data:<mime>;base64,…` 字符串。
 - `newImageId()`：`img-<时间戳36>-<随机6>`（同 `newDesignId` 格式）。
-- `isDirectUri(ref)`：`http://` / `https://` / `data:` 开头 → true（旧设计/回退条目，解析时原样透传）。
-- `saveGeneratedImage(url)`：fetch → `arrayBuffer` → 分块 `String.fromCharCode` + `btoa` 转 base64（mime 取 `content-type` 头，缺省 `image/png`）→ put 进 IDB → 返回新 id；**任何失败**（fetch/CORS/网络/非 2xx/IDB 不可用）`console.error` 后**返回原始 url**（图仍会显示但随服务过期），永不抛错。
-- `resolveImageRef(ref)`：`isDirectUri` 直接返回；否则 IDB `get`，记录存在且 `uri` 非空返回之，否则 `null`（调用方渲染空占位），不抛错。
-- IDB 打开用单例 promise，失败/关闭时清缓存（失败不毒化后续 open）；`typeof indexedDB === 'undefined'` 时全部走失败/透传路径。
+- `saveGeneratedImage(url, id?)`：fetch → `arrayBuffer` → 分块 `String.fromCharCode` + `btoa` 转 base64（mime 取 `content-type` 头，缺省 `image/png`）→ put 进 IDB → 返回存下的 id（`id` 缺省时随机新 id；传入时存该 id——稳定 id 调用方 check-then-store 不重复抓取）；**任何失败**（fetch/CORS/网络/非 2xx/IDB 不可用）`console.error` 后**返回 null**——无原始 URL 回退，存不进库的 ref 视为不存在，永不抛错。
+- `resolveImageRef(ref)`：IDB `get`，记录存在且 `uri` 非空返回之，否则 `null`（调用方渲染空占位），不抛错；URL 样式的值（旧设计遗留）同样查库，查不到 → null。
+- IDB 打开用单例 promise，失败/关闭时清缓存（失败不毒化后续 open）；`typeof indexedDB === 'undefined'` 时全部走失败路径。
 - 配套 hook `useImageUris(refs)`（`src/app/useImageUris.ts`，首页卡片与设计页共用）：按 ref 缓存解析结果（first-write-wins，迟到的结果落在已移除的 ref 上无害，无需取消），返回与 `refs` 按索引对齐的 uri 数组（解析中/缺失 = `null`）。
 
 ### designStore.ts
 localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失败返回空数组）/ `getDesign` / `upsertDesign`（按 id 插入或替换，倒序持久化并返回最新列表）。
-导航 handoff（key `drawboard.handoff`，按 id 的 `{ promptData, size }` 映射，上限 10 条、超了逐出最旧）：`setDesignHandoff`（首页发起设计时写入）/ `getDesignHandoff`（设计页按 id 读，不消费）/ `clearDesignHandoff`（Save 成功后清除）；`newDesignId` 生成 `design-<时间戳>-<随机>` id；`markNavigationFromHome` / `cameFromHome`（sessionStorage 标志 `drawboard.fromHome`，记录本会话由首页进入设计页，供设计页返回按钮判断回上一页还是去首页，见「页面与导航」节）。
+导航 handoff（key `drawboard.handoff`，按 id 的 `{ promptData, size, rawPrompt?, images? }` 映射，上限 10 条、超了逐出最旧；`images` 为可选种子图片历史，供"从首页示例开设计"携带参考图）：`setDesignHandoff`（首页发起设计/打开示例时写入）/ `getDesignHandoff`（设计页按 id 读，不消费）/ `clearDesignHandoff`（Save 成功后清除）；`newDesignId` 生成 `design-<时间戳>-<随机>` id；`markNavigationFromHome` / `cameFromHome`（sessionStorage 标志 `drawboard.fromHome`，记录本会话由首页进入设计页，供设计页返回按钮判断回上一页还是去首页，见「页面与导航」节）。
 
 ### color.ts
 无依赖的颜色工具：`hexToRgb`（#RGB/#RRGGBB，无 # 亦可）、`rgbToHex`（大写）、`rgbToHsv` / `hsvToRgb`、`clamp01` / `clamp255`、`rgbToCss`。
@@ -314,6 +315,7 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
 - `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）；`rawPrompt` 在 handoff 与已存设计中的持久化（含旧格式缺省、upsert 保留）。
 - `imageDownload.spec.ts`：纯函数单测（stub fetch/document/URL object-URL）——成功时以正确文件名经 `<a download>` 点击触发下载；fetch 失败时抛错且不动 DOM。
-- `imageStore.spec.ts`：纯函数单测（`fake-indexeddb` 内存 IDB，每测试新 factory + `jest.resetModules` 隔离模块级单例；stub fetch 的 `arrayBuffer`，注意 Node Buffer 池——须 `new Uint8Array(Buffer)` 拷出）——`newImageId` 格式/唯一、`isDirectUri` 判定、成功存 data URI 后按 id 查回、fetch 失败/非 2xx/IDB 不可用三路径回退原 URL、URL 透传不碰 IDB、未命中 id → null。
+- `imageStore.spec.ts`：纯函数单测（`fake-indexeddb` 内存 IDB，每测试新 factory + `jest.resetModules` 隔离模块级单例；stub fetch 的 `arrayBuffer`，注意 Node Buffer 池——须 `new Uint8Array(Buffer)` 拷出）——`newImageId` 格式/唯一、显式稳定 id 存储（check-then-store 调用方）、成功存 data URI 后按 id 查回、fetch 失败/非 2xx/IDB 不可用三路径均返回 null（无 URL 回退）、URL 样式值（https/data/根相对路径 `/…`）不再透传 → null、未命中 id → null。
+- `exampleCollection.spec.ts`：纯函数单测（stub fetch + `fake-indexeddb`）——`loadExampleCollection` 抓图持久化进 IDB（稳定 id `img-<文件名>`）、已在库不重复抓取、非法条目过滤、单张图失败 `imageId=null` 不影响其余、非 2xx/非数组/网络失败回退 `[]` 不抛错；`sizeFromRatio` 各比例换算与非法回退方形；`exampleToDesign` 的 id 取自 url 文件名、`images=[imageId]`（持久化失败 → `[]` 无 tile）、`rawPrompt`、size 随 `aspect_ratio`、无文件名回退 `example-<index>`。
 - `i18n.spec.ts`：纯函数单测（内存 storage 挂到 `window.localStorage`）——默认 en-US、合法/非法存储值回退、`persistLocale` 写回、题目要求的全部英中映射、`{n}`/`{items}` 占位替换、未知 key 透传、双语表 key 对齐且无空值。
-- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言；首页断言含侧栏导航/墙标题/空态、prompt 占位符、圆形开始按钮 aria-label）；图片墙专项为 `scripts/e2e_home_wall.cjs`（Home 模式无标题且墙空；Recent 模式标题出现、masonry 仅含有图设计且 DOM 顺序最新在前、tile 宽高比跟随设计尺寸、悬停叠加 rawPrompt/无 rawPrompt 回退 HLD、点击进入设计、返回复位 Home、无设计时空态）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计经图片墙 tile 进入、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）；图片持久化专项为 `scripts/e2e_image_store.cjs`（IDB 设计打开显示、生成存 base64 随机 id、Save 存 id 后 reload 仍显示、转换失败回退 URL、旧 URL 透传、首页墙 tile 混合 ref、下载文件名）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。另注意 RN-web 0.21 会把**静态** StyleSheet 编译为 CSS 类（inline `style` 属性为空），e2e 断言样式须用 testID + 计算样式或动态 inline 值。
+- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言；首页断言含侧栏导航/墙标题/空态、prompt 占位符、圆形开始按钮 aria-label）；首页示例墙专项为 `scripts/e2e_example_wall.cjs`（读磁盘 example.json 驱动断言：Home 默认墙=示例集 tile 数=文件长度且各渲染示例图（IDB 解析出的 data URI，非打包文件 URL）、标题 "Collections"（"Recent Designs" 仅侧边栏出现一次）；悬停叠加原始 prompt；点击 tile 开全新设计——标题=HLD/画布比例=示例 aspect_ratio/参考图/Generated(1)/元素框数/Show Prompt 双栏/返回复位）；图片墙专项为 `scripts/e2e_home_wall.cjs`（Home 模式标题 "Collections" 且墙=示例集；Recent 模式标题 "Recent Designs" 出现、masonry 仅含有图设计且 DOM 顺序最新在前、tile 宽高比跟随设计尺寸、悬停叠加 rawPrompt/无 rawPrompt 回退 HLD、点击进入设计、返回复位 Home、无设计时空态）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计经图片墙 tile 进入、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）；图片持久化专项为 `scripts/e2e_image_store.cjs`（IDB 设计打开显示、生成存 base64 随机 id（按生成 data URI 过滤——首页加载已把示例图持久化进同一 IDB）、Save 存 id 后 reload 仍显示、转换失败 → 无画布图 + `imageSaveFailed` 错误行 + 不进历史 + 无新增 IDB 记录 + 保存的设计无图、旧 URL ref 不渲染图且 URL 永不被 fetch、首页墙 IDB tile 出 data URI / 旧 URL tile 保留但空占位、下载文件名）；首页提交错误专项为 `scripts/e2e_start_design_error.cjs`（LLM 端点未设置正确时点击提交 → 输入条上方红色错误行 `refine-error`：连接拒绝显示 "Failed to fetch" 且**持久**超过 5 秒瞬态窗口、修正 localStorage 端点后再次提交即清除旧错并跳转 /design；HTTP 500 显示 "LLM API Error (500): …" 且恰 1 次 LLM 调用；空端点显示 "Missing settings: LLM endpoint" 且 0 次 LLM 请求；3 次全部返回非法 JSON 后显示 "…on every attempt" 且恰 3 次调用；全程无跳转、无 pageerror）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。另注意 RN-web 0.21 会把**静态** StyleSheet 编译为 CSS 类（inline `style` 属性为空），e2e 断言样式须用 testID + 计算样式或动态 inline 值。

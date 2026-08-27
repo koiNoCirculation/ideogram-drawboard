@@ -12,9 +12,17 @@ const REFINE_MAX_ATTEMPTS = 3;
 
 /**
  * The home page's "Start Design" flow: validate the prompt and the LLM
- * settings, refine with retries on malformed JSON (transient 5s error line),
- * stash the refined prompt in the navigation handoff and push /design?id=...
- * Returns the loading flag, the transient refine error and the button handler.
+ * settings, refine with retries on malformed JSON, stash the refined prompt
+ * in the navigation handoff and push /design?id=...
+ *
+ * Every LLM-side failure — missing settings, an unreachable/misconfigured
+ * endpoint (fetch/HTTP error), or malformed JSON on every attempt — is
+ * reported as a RED error line above the prompt bar: "retrying" notices are
+ * transient (auto-dismiss after 5s), final errors persist until the next
+ * submit attempt. (Alert.alert is a no-op on web, so the inline red line is
+ * the only visible feedback.)
+ *
+ * Returns the loading flag, the current refine error and the button handler.
  */
 export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
     prompt: string;
@@ -25,15 +33,30 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
     const router = useRouter();
     const { t } = useI18n();
     const [isLoading, setIsLoading] = useState(false);
-    // Transient "invalid JSON, retrying" message (auto-dismisses after 5s).
+    // Red error line above the prompt bar (null = hidden).
     const [refineError, setRefineError] = useState<string | null>(null);
     const refineErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Show the transient refine error; a fresh failure restarts the 5s timer.
-    const showRefineError = (message: string) => {
+    // Show the refine error. Transient ones (a retry is still in flight)
+    // auto-dismiss after 5s; final failures persist until the next submit
+    // attempt — a misconfigured endpoint won't fix itself in 5s. A fresh
+    // failure restarts the timer.
+    const showRefineError = (message: string, transient = true) => {
         setRefineError(message);
         if (refineErrorTimer.current) clearTimeout(refineErrorTimer.current);
-        refineErrorTimer.current = setTimeout(() => setRefineError(null), 5000);
+        refineErrorTimer.current = transient
+            ? setTimeout(() => setRefineError(null), 5000)
+            : null;
+    };
+
+    // Hide the error line and cancel any pending auto-dismiss (a new submit
+    // attempt starts clean).
+    const clearRefineError = () => {
+        setRefineError(null);
+        if (refineErrorTimer.current) {
+            clearTimeout(refineErrorTimer.current);
+            refineErrorTimer.current = null;
+        }
     };
 
     useEffect(() => {
@@ -41,6 +64,8 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
     }, []);
 
     const handleStartDesigning = async () => {
+        // A new attempt starts clean: hide any previous error line.
+        clearRefineError();
         if (!prompt.trim()) {
             Alert.alert(t('errorTitle'), t('promptRequired'));
             return;
@@ -49,7 +74,9 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
         // preset vendors, and an endpoint for self-hosted backends.
         const missingLlm = getMissingSettings(loadSettings()).filter((m) => m.startsWith('LLM'));
         if (missingLlm.length > 0) {
-            Alert.alert(t('errorTitle'), t('missingSettingsAlert', { items: missingLlm.join(', ') }));
+            // Red error line (Alert.alert is a no-op on web) listing the
+            // missing items; no LLM request is sent.
+            showRefineError(t('missingSettingsAlert', { items: missingLlm.join(', ') }), false);
             return;
         }
 
@@ -72,15 +99,19 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
             markNavigationFromHome();
             router.push({ pathname: '/design', params: { id } });
         } catch (error: any) {
-            Alert.alert(t('errorTitle'), error.message || t('refineFailedAlert'));
+            // Misconfigured/unreachable endpoint, HTTP error or every JSON
+            // retry failed: keep the red error line visible until the next
+            // submit attempt (no auto-dismiss).
+            showRefineError(error.message || t('refineFailedAlert'), false);
         } finally {
             setIsLoading(false);
         }
     };
 
     // Refine the prompt. The LLM can answer with malformed JSON (temperature
-    // 1.0): parse each attempt, and on failure show a transient error and
-    // retry, giving up with an error after REFINE_MAX_ATTEMPTS.
+    // 1.0): parse each attempt, and on failure show an error line (transient
+    // while retries remain, persistent after the final one) and retry,
+    // giving up with an error after REFINE_MAX_ATTEMPTS.
     const refineWithRetry = async (systemPrompt: string, ratioString: string): Promise<string> => {
         for (let attempt = 1; attempt <= REFINE_MAX_ATTEMPTS; attempt++) {
             const raw = await refine(systemPrompt, prompt, ratioString);
@@ -88,12 +119,17 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
                 JSON.parse(raw);
                 return raw;
             } catch {
+                const last = attempt === REFINE_MAX_ATTEMPTS;
+                // "Retrying" is transient (5s); the final message persists —
+                // the catch in handleStartDesigning re-shows it after the
+                // throw.
                 showRefineError(
-                    attempt < REFINE_MAX_ATTEMPTS
-                        ? t('refineRetrying', { n: attempt + 1, max: REFINE_MAX_ATTEMPTS })
-                        : t('refineAllFailed'),
+                    last
+                        ? t('refineAllFailed')
+                        : t('refineRetrying', { n: attempt + 1, max: REFINE_MAX_ATTEMPTS }),
+                    !last,
                 );
-                if (attempt === REFINE_MAX_ATTEMPTS) {
+                if (last) {
                     throw new Error(t('refineAllFailed'));
                 }
             }
