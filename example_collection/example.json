@@ -1,0 +1,1264 @@
+[
+    {
+        "prompt": "Tropical beach with turquoise water, black volcanic rocks, swaying palms, bright noon sun, ultra-clean travel photography, balanced square crop.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "A balanced square-crop travel photograph of a tropical beach with turquoise water, black volcanic rocks, and swaying coconut palms under a bright noon sky.",
+            "style_description": {
+                "aesthetics": "ultra-clean, crisp, minimal, high-clarity travel-magazine",
+                "lighting": "bright direct noon sunlight, short shadows, neutral white balance",
+                "photo": "35mm, f/8, sharp edge-to-edge, natural daylight",
+                "medium": "photograph",
+                "color_palette": [
+                    "#17B8B2",
+                    "#0E8F9C",
+                    "#062B33",
+                    "#111111",
+                    "#F8F4EC",
+                    "#6FA99B",
+                    "#2F5D50",
+                    "#FFFFFF"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "Bright clear midday sky with faint white haze above a calm turquoise tropical bay. A black volcanic rock beach and low dark lava shore stretch across the lower half, with wet reflective stone, white foam at the waterline, and clear shallow water over pale sand.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            40,
+                            20,
+                            720,
+                            320
+                        ],
+                        "desc": "Coconut palm with a curved dark brown trunk and deep green feather-shaped fronds, its crown tilted toward the center. The foliage spreads across the upper-left foreground, with individual leaves separated and slightly bent by a light breeze."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            60,
+                            680,
+                            740,
+                            990
+                        ],
+                        "desc": "Coconut palm with a gray-green trunk arching inward from the right edge and broad dark green fronds fanning upward. The crown occupies the upper-right corner, providing a natural frame while the trunk stays low near the volcanic rock shoreline."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mt9mlklo-8y6fyf.png"
+    },
+    {
+        "prompt": "Close portrait of an elderly woman by a farmhouse window, textured skin, gentle smile, warm natural light, emotional documentary look. The portrait should feel polished and natural, with sharp eyes, realistic skin texture, accurate facial anatomy, and premium lighting that keeps the face as the main focus.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "Close documentary photograph of an elderly woman by a farmhouse window, textured skin, gentle smile, sharp eyes, soft afternoon window light, emotional realism, intimate face-focused composition.",
+            "style_description": {
+                "aesthetics": "emotional documentary, naturalistic, polished, intimate, dignified, realistic, restrained",
+                "lighting": "soft late-afternoon window daylight from the left, premium soft key, gentle falloff, clear catchlights, natural shadows, neutral grade with subtle amber from the low sun",
+                "photo": "85mm lens, f/2.8, focused on the eyes, realistic skin texture, accurate facial anatomy, fine detail, natural color rendition",
+                "medium": "photograph",
+                "color_palette": [
+                    "#E8DCCB",
+                    "#C7A67B",
+                    "#8A6C4E",
+                    "#6F7B5E",
+                    "#D9B98F",
+                    "#3A2F25",
+                    "#F2E7D8"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "Rustic farmhouse interior with a rough plaster wall in light taupe, a weathered wooden window frame and open casement on the left, low afternoon sunlight entering through the glass, a soft out-of-focus rural field beyond the window, plain wooden windowsill, no other furnishings visible.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            150,
+                            330,
+                            950,
+                            780
+                        ],
+                        "desc": "Medium-to-large close portrait subject: elderly woman with fair-to-olive mature skin, visible fine lines, wrinkles, age spots, and realistic pore texture. Short silver-grey hair pulled back loosely, calm gentle smile, sharp focused eyes with clear catchlights, muted sage cardigan over cream blouse, angled slightly toward window light, face primary focal point."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mt9ktih6-9mqken.png"
+    },
+    {
+        "prompt": "A chocolate bar left in direct sunlight, highlighting the state of the chocolate",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "Partially melted rectangular chocolate bar on a pale stone slab in direct sunlight, glossy sagging segments and drips showing heat-softened chocolate in a close-up photograph.",
+            "style_description": {
+                "aesthetics": "clean, crisp, sunlit, photoreal, close-up",
+                "lighting": "direct midday sunlight from the upper left, hard bright pool, neutral white balance, strong small specular highlights",
+                "photo": "smartphone close-up, 50mm equivalent, f/8, sharp focus, no motion blur",
+                "medium": "photograph",
+                "color_palette": [
+                    "#3B2A20",
+                    "#5C4033",
+                    "#8A5A3B",
+                    "#D8CFC3",
+                    "#F3EFE6"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "A flat pale grey stone slab surface fills the entire frame. Direct midday sunlight from the upper left creates a hard bright pool across the slab, with a small cooler edge at the lower right. The surface is matte and still, with no other architectural context visible.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            340,
+                            260,
+                            720,
+                            760
+                        ],
+                        "desc": "Rectangular milk chocolate bar, dark brown, glossy heat-softened surface, segmented ridges with four visible blocks, two segments sagging and separated. Melted chocolate runs down the lower edges and forms small puddles on a pale stone slab. A partially peeled tan paper wrapper lies beside the bar."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mt9kezw0-oocgtl.png"
+    },
+    {
+        "prompt": "A delicious Neapolitan pizza with a soft, charred crust, tomato sauce, and fresh mozzarella, served on a rustic wooden table, realistic food photography.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "A whole Neapolitan pizza with a soft, charred crust, red tomato sauce, and melted fresh mozzarella, centered on a weathered rustic wooden table, realistic food photography with shallow depth and natural window light.",
+            "style_description": {
+                "aesthetics": "appetizing, rustic, natural, editorial food photography",
+                "lighting": "soft directional daylight from the upper left, bright specular highlights on melted mozzarella and tomato sauce",
+                "photo": "50mm, f/2.8, shallow depth of field, high detail",
+                "medium": "photograph",
+                "color_palette": [
+                    "#3E2723",
+                    "#8B4513",
+                    "#D32F2F",
+                    "#FFF3D6",
+                    "#F4A940",
+                    "#212121"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "Weathered rustic wooden tabletop with deep amber grain, knots, small scratches, and faint flour dust, extending across the entire frame. Soft natural daylight enters from the upper left, with gentle tonal falloff toward the lower right.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            160,
+                            160,
+                            840,
+                            840
+                        ],
+                        "desc": "Whole Neapolitan pizza, round, soft thick puffy cornicione crust with leopard spotting and blackened char bubbles, glossy red tomato sauce, melted fresh mozzarella with light browned patches, no added toppings, presented as a single coherent dish."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtaff85g-hilli4.png"
+    },
+    {
+        "prompt": "An extreme close-up of a massive, transparent soap bubble floating in the immediate foreground, with a tiny, detailed miniature town visible inside the curvature, refracted and magnified by the surface tension, soft natural daylight, dreamlike, high detail, photorealistic texture.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "A massive transparent soap bubble floats in an extreme close-up foreground, its curved film refracting and magnifying a tiny detailed miniature town inside the curvature, with dreamlike photorealistic texture in soft natural daylight.",
+            "style_description": {
+                "aesthetics": "dreamlike, soft naturalistic, high-detail, iridescent",
+                "lighting": "soft natural daylight, diffused ambient light, subtle rainbow iridescence on the bubble film",
+                "photo": "100mm macro, f/5.6, close focus on the bubble surface, very shallow depth of field, hyperdetailed water film",
+                "medium": "photograph",
+                "color_palette": [
+                    "#EAF6F8",
+                    "#D9F1F4",
+                    "#C5E8EE",
+                    "#EFE4F2",
+                    "#F6E8CE",
+                    "#8FC9D2",
+                    "#5B8FA5",
+                    "#33566A"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "The surrounding shell is open air with pale overcast daylight and a faint out-of-focus pale blue-grey sky at the frame edges, without ground, walls, or other objects behind the bubble.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            90,
+                            90,
+                            900,
+                            910
+                        ],
+                        "desc": "Massive transparent soap bubble centered in the frame, occupying nearly the entire square with only a narrow pale sky margin at the edges, near-spherical water film with smooth curved surface and subtle rainbow iridescence. Inside the central curvature, a tiny detailed miniature town is refracted and magnified, showing small houses, winding streets, green trees, and a narrow river through the tensioned film."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtaj92ki-enxc1d.png"
+    },
+    {
+        "prompt": "A woman seen through rain-covered glass from head to waist, elongated reflections, emotional and refined visual poetry.",
+        "jsonprompt": {
+            "aspect_ratio": "9:16",
+            "high_level_description": "A woman from head to waist stands behind rain-streaked glass, viewed in a vertical frame, with elongated blurred reflections and muted cool tones creating an emotional, refined photographic visual poem.",
+            "style_description": {
+                "aesthetics": "moody, refined, melancholic, intimate, editorial visual poetry",
+                "lighting": "soft diffused window light, cool neutral ambient, faint blue-grey exterior light, subtle specular highlights on rain droplets",
+                "photo": "85mm portrait lens, f/1.8, shallow but soft focus through glass, neutral white balance",
+                "medium": "photograph",
+                "color_palette": [
+                    "#1B2430",
+                    "#2C3E50",
+                    "#4A5A6A",
+                    "#8CA3B5",
+                    "#D9E2E8",
+                    "#3B2F2F"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "A vertical sheet of rain-covered glass fills the frame, beaded droplets and long streaks running down the surface, soft elongated reflections of dark city lights stretched diagonally across the pane, dim muted exterior light, cool blue-grey atmosphere, the glass acting as the entire backdrop.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            59,
+                            131,
+                            962,
+                            879
+                        ],
+                        "desc": "Elongated woman from head to waist, pale medium skin tone, long dark wavy hair falling over shoulders, dark charcoal wool coat over cream turtleneck, calm downcast expression, slight tilt of head, hands hidden at waist level, positioned broadly centered and filling most of the vertical frame behind rain-covered glass, with cool exterior light grazing her cheek."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtakw58y-vap62v.png"
+    },
+    {
+        "prompt": "A quiet church interior with sunlight touching one empty chair, tall architecture, meditative artistic stillness. The final image should feel intentional and refined, with a clear artistic mood, thoughtful composition, nuanced color control, and a gallery-like sense of visual storytelling.",
+        "jsonprompt": {
+            "aspect_ratio": "10:16",
+            "high_level_description": "A meditative fine-art painting of a quiet stone church interior, with a single empty wooden chair set in a shaft of daylight beneath towering vaulted arches and a narrow window, rendered in muted blue-gray stone with soft gold highlights.",
+            "style_description": {
+                "aesthetics": "meditative, refined, gallery-like, restrained, contemplative, quiet",
+                "lighting": "single soft daylight shaft from a high narrow window, low-contrast falloff, cool shadowed interior",
+                "medium": "painting",
+                "art_style": "fine-art painterly rendering, restrained interior still life, soft atmospheric perspective, muted brushwork",
+                "color_palette": [
+                    "#14212B",
+                    "#243B4E",
+                    "#49606F",
+                    "#7E8C93",
+                    "#C9A96A",
+                    "#E4D3B2"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "A tall, mostly empty stone church interior with a ribbed vaulted ceiling, slender columns, smooth ashlar walls, a narrow lancet window high on the right, and a polished stone floor receding toward a distant apse. Cool blue-gray ambient light fills the nave, with a single soft daylight shaft entering the window and crossing toward the lower left; faint dust motes suspend in the beam.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            780,
+                            50,
+                            900,
+                            450
+                        ],
+                        "desc": "Empty antique wooden church bench with a high back, worn oak finish, straight legs, and a simple carved crest, shown as a broad low cropped horizontal band in the lower-left area, with the visible lower part of its seat and back catching a clear rectangle of pale daylight."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            780,
+                            540,
+                            900,
+                            940
+                        ],
+                        "desc": "Empty antique wooden church bench with a high back, worn oak finish, straight legs, and a simple carved crest, positioned in a tall narrow band in the lower-right area toward the right edge, its seat and back catching a clear rectangle of pale daylight."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            730,
+                            530,
+                            830,
+                            910
+                        ],
+                        "desc": "Empty antique wooden church bench with a high back, worn oak finish, straight legs, and a simple carved crest, positioned in a tall narrow band in the lower-right area, offset inward from the right edge, its seat and back catching a clear rectangle of pale daylight."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            730,
+                            70,
+                            830,
+                            450
+                        ],
+                        "desc": "Empty antique wooden church bench with a high back, worn oak finish, straight legs, and a simple carved crest, positioned in a tall narrow band in the lower-left area, set back in perspective, its seat and back catching a clear rectangle of pale daylight."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtalpcgq-rl3vmz.png"
+    },
+    {
+        "prompt": "A winter portrait of a traveler in a wool coat and scarf, rosy cheeks, frosty air, bright eyes, elegant vertical framing. The portrait should feel polished and natural, with sharp eyes, realistic skin texture, accurate facial anatomy, and premium lighting that keeps the face as the main focus.",
+        "jsonprompt": {
+            "aspect_ratio": "10:16",
+            "high_level_description": "Close-up winter photograph of a traveler in a wool coat and knitted scarf, rosy cheeks and bright eyes, in frosty outdoor air with elegant vertical framing and sharp realistic facial detail.",
+            "style_description": {
+                "aesthetics": "polished, natural, refined, editorial, cool-neutral, premium portrait",
+                "lighting": "soft directional daylight from the upper left, clean catchlights in the eyes, gentle falloff from face to coat, face as the primary focal area",
+                "photo": "85mm, f/2.0, shallow background blur, natural skin texture, accurate facial anatomy",
+                "medium": "photograph",
+                "color_palette": [
+                    "#E9F1F8",
+                    "#C5D3E0",
+                    "#8FA3B8",
+                    "#5B6B7B",
+                    "#D9A2A2",
+                    "#E8D8CF"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "Frosty outdoor winter setting with soft diffused daylight, pale grey-blue sky, distant bare winter trees, snow-covered ground, fine airborne frost, and cool atmospheric haze.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            120,
+                            250,
+                            930,
+                            880
+                        ],
+                        "desc": "Traveler head-and-shoulders subject, positioned slightly right of center. Adult with fair skin, short wind-tossed brown hair, bright blue-grey eyes, direct steady gaze, natural rosy cheeks, subtle frost on hair. Wears a charcoal wool overcoat and a cream knitted scarf wrapped around the neck, mouth closed, composed expression."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtanw2ew-trvii3.png"
+    },
+    {
+        "prompt": "A violinist standing beneath stage lights, elegant bow arm and grounded posture, full body visible.",
+        "jsonprompt": {
+            "aspect_ratio": "10:16",
+            "high_level_description": "A full-body photograph of a standing violinist on a dark stage beneath bright overhead spotlights, elegant right bow arm raised, grounded stance, cool neutral lighting and sharp rim highlights.",
+            "style_description": {
+                "aesthetics": "elegant, high-contrast, professional concert stage",
+                "lighting": "bright white spotlights from above, cool neutral white balance, strong rim light, dark ambience",
+                "photo": "50mm lens, f/4, full-frame sensor, crisp focus, neutral white balance",
+                "medium": "photograph",
+                "color_palette": [
+                    "#0A0F1A",
+                    "#111827",
+                    "#E5E7EB",
+                    "#9CA3AF",
+                    "#334155"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "A dark concert stage with a glossy black floor reflecting the overhead fixtures, a black curtain backdrop, and an overhead truss holding several bright white spotlights aimed downward. Cool haze fills the upper area, and the empty space surrounds the performer.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            90,
+                            320,
+                            980,
+                            700
+                        ],
+                        "desc": "Standing violinist, full body, adult, medium build. Shoulder-length dark brown hair, medium skin tone, black formal jacket, white shirt, black trousers. Violin under the chin, left hand on fingerboard, right bow arm raised elegantly, head upright, gaze forward, feet planted apart in grounded stance."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtao83ax-e0df21.png"
+    },
+    {
+        "prompt": "Cherry blossom trees arching over a temple stairway, petals drifting downward, elegant spring vertical composition.",
+        "jsonprompt": {
+            "aspect_ratio": "16:10",
+            "high_level_description": "A soft daylight photograph of pale pink cherry blossom branches arching over a weathered stone temple stairway, with falling petals and an elegant upward vertical arrangement in a 16:10 frame.",
+            "style_description": {
+                "aesthetics": "elegant, serene, refined naturalistic spring, tranquil Japanese shrine atmosphere",
+                "lighting": "diffuse overcast daylight, soft even illumination, cool neutral white balance, gentle shadows",
+                "photo": "35mm f/2.2, mild depth of field, natural handheld framing",
+                "medium": "photograph",
+                "color_palette": [
+                    "#F7CBD5",
+                    "#FFF6F9",
+                    "#8CA883",
+                    "#9C9A92",
+                    "#5F7055",
+                    "#DCE5E7",
+                    "#404840"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "The stone temple stairway forms the central architectural shell, rising toward a gated shrine platform, with pale overcast sky, distant grey-green tree line, thin spring mist, and cool diffused ambient light.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            250,
+                            330,
+                            950,
+                            670
+                        ],
+                        "desc": "The primary background element: weathered stone temple stairway rising from the lower center toward a small shrine platform, broad grey steps, mossed edges, low stone railings, and a dark wooden gate framed at the upper end. Austere Japanese shrine styling with restrained vertical lines."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            305,
+                            570,
+                            370,
+                            610
+                        ],
+                        "text": "桜\n神\n社",
+                        "desc": "Small vertical wooden plaque mounted on the dark shrine gate, black painted characters in traditional Japanese style, centered on the gate and slightly above eye level. The lettering is neat, quiet, and unobtrusive within the spring composition."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            50,
+                            0,
+                            480,
+                            410
+                        ],
+                        "desc": "Large cherry blossom branch entering from the upper left, thick grey-brown bark, smooth curved limbs, dense clusters of five-petaled pale pink flowers and soft white buds. Leaves are small green and sparse, creating a framing canopy that leans over the stairway."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            70,
+                            590,
+                            490,
+                            1000
+                        ],
+                        "desc": "Massive cherry blossom branch arching from the upper right, grey-brown bark, layered five-petaled pale pink blossoms, few small green leaves, and dangling clusters that form a graceful overhead curve. The branch balances the composition without obscuring the temple stairway below."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            300,
+                            200,
+                            900,
+                            830
+                        ],
+                        "desc": "Loose cherry blossom petals falling through the air, pale pink and white five-petal shapes, some tumbling, some gliding diagonally downward across the stairway and foreground. The petals are scattered naturally with different sizes and orientations."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtaolr95-4vngjx.png"
+    },
+    {
+        "prompt": "Stormy seascape with waves crashing against a lighthouse, dramatic sky, realistic water motion, moody coastal photography.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "Moody coastal photograph of a white-and-red lighthouse on a storm-battered rocky headland, with churning grey-green waves crashing at its base beneath a dark dramatic sky full of spray and breaking swells.",
+            "style_description": {
+                "aesthetics": "moody, desaturated, naturalistic, high-contrast coastal drama",
+                "lighting": "low overcast storm light, diffuse grey daylight, bright specular highlights on wave crests and lighthouse edges",
+                "photo": "35mm, f/11, 1/1000s, ISO 200, neutral white balance",
+                "medium": "photograph",
+                "color_palette": [
+                    "#10151A",
+                    "#1F2933",
+                    "#2F3E4D",
+                    "#47586A",
+                    "#6C7F8D",
+                    "#9AACB7",
+                    "#D7E1E8"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "A heavy charcoal-and-slate storm sky dominates the upper half, dense with low rolling clouds and occasional pale breaks. The lower half is a churning grey-green sea with large breaking swells, white foam, frothy wave trails, and suspended spray. Dark wet basalt rocks form a rough headland and scattered reef in the lower frame, with wave impact zones visible around the rocky base.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            120,
+                            580,
+                            780,
+                            850
+                        ],
+                        "desc": "A cylindrical stone lighthouse tower painted white with two horizontal red bands, black cast-iron gallery railing, domed lantern room with segmented glass panes, and a small steel access door near the base. The tower leans subtly left, emphasizing its vertical mass."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtaoyz9x-tj5m53.png"
+    },
+    {
+        "prompt": "The infographic titled \"Autonomous Frontiers\" presents a vision of future logistics through the evolution of autonomous delivery systems. The main title is displayed in large, bold white font at the top left, accompanied by a small orange exclamation mark icon and the text \"JetBrains Mono LOG-SYS v.2.0\" beneath it. The subtitle reads \"Future Logistics: The Evolution of Autonomous Delivery.\"\n\nThe overall layout is divided into two primary visual sections: a dark, tech-themed left side featuring detailed technical descriptions and a lighter, cityscape background on the right illustrating the broader concept of ubiquitous autonomy. The design employs a sleek, futuristic aesthetic with circuit-like line patterns along the edges, glowing blue accents, and a 3D rendering of a silver autonomous delivery robot prominently featured in the lower half, occupying the center and bottom-right of the image.\n\nThe robot is depicted with rugged black tires, a carbon-fiber textured front panel, a transparent hood revealing an onboard computing unit, and a large camera lens on its front-left corner. A bright blue LED strip runs along the lower edge of the robot’s body. The word \"DELIVERY\" is partially visible on the side panel.\n\nThree key technological components are highlighted with callout boxes and connecting lines to specific parts of the robot:\n\n1. **TECH_PERCEPTION: The Sensory Layer – Multi-Modal Sensor Fusion**  \n   - Positioned in the upper left quadrant.  \n   - Describes how the robot perceives its environment using Lidar, Ultrasonic, and HD Vision.  \n   - Processes 10GB of spatial data per second to generate a 360-degree real-time map.  \n   - Ensures collision-free navigation in dense urban environments.  \n   - A small orange dot connects this box to a wireframe visualization of a 3D point cloud or LiDAR scan above the robot.\n\n2. **TECH_DECISION: Edge Computing Core – Edge AI Path Optimization**  \n   - Located in the middle left section.  \n   - Explains that onboard neural networks calculate energy-efficient routes in milliseconds.  \n   - Advanced algorithms predict pedestrian behavior and traffic patterns.  \n   - Transforms last-mile delivery into a silent, optimized flow.  \n   - An orange dot links this description to the transparent computing module under the robot's hood.\n\n3. **TECH_EXECUTION: Kinetic Propulsion – All-Terrain Modular Chassis**  \n   - Placed in the bottom right, adjacent to the robot’s wheel and suspension.  \n   - Details independent suspension and high-torque electric motors for conquering curbs and uneven surfaces.  \n   - Mentions modular cargo bays for temperature control, preserving goods from medical supplies to perishables.  \n   - An orange dot points to the wheel/suspension area.\n\nOn the right side of the infographic, under the heading \"TECH_FUTURE: The Trend Horizon,\" the concept of \"Ubiquitous Autonomy\" is introduced. It states that the future of logistics involves an invisible infrastructure of movement, moving toward a “Logistics Internet” where distribution is as fluid and constant as information flow. This section features a faded grayscale image of a modern city skyline with numerous drones flying overhead, visually reinforcing the idea of widespread autonomous delivery.\n\nThe color palette consists mainly of dark grays, metallic silver, black, and vibrant blue accents, with orange used for emphasis (dots, icons, and highlights). Text elements use sans-serif fonts, varying in size and weight to establish hierarchy. No charts, graphs, or numerical data beyond explicit values like \"10GB per second\" are present. The infographic combines conceptual illustration with technical explanation to communicate the integration of perception, decision-making, and physical execution in autonomous delivery systems.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "Square futuristic graphic-design infographic titled 'Autonomous Frontiers' showing a dark technical panel, callout boxes, and a large 3D silver autonomous delivery robot beside a faded city skyline with drones.",
+            "style_description": {
+                "aesthetics": "sleek, futuristic, high-tech, cyber-urban, precise, dark, clean",
+                "lighting": "cool blue accent lighting, soft ambient cyan emission from LED strips and circuit lines, neutral even illumination",
+                "medium": "graphic_design",
+                "art_style": "futuristic technical infographic, flat vector UI panels, 3D rendered robot, dark cyber-urban concept art",
+                "color_palette": [
+                    "#0B0F14",
+                    "#141A22",
+                    "#2A313B",
+                    "#C9D1D9",
+                    "#E6EDF3",
+                    "#2F80ED",
+                    "#00C2FF",
+                    "#FF7A00",
+                    "#FF9E2C"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "Square infographic shell divided into a dark charcoal technical left panel and a lighter grayscale modern city skyline on the right. Low-contrast blue circuit-like line patterns run along the canvas edges, with a grid of small node dots. The right side shows a faded skyline under a neutral gray sky, with atmospheric haze and cool blue ambient lighting across the layout.",
+                "elements": [
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            215,
+                            540,
+                            360,
+                            980
+                        ],
+                        "desc": "Numerous small dark-gray autonomous delivery drones fly across the upper-right cityscape area, arranged in a shallow diagonal pattern above the skyline. Each drone has a compact quadcopter body, four short rotors, and a small cargo pod hanging beneath. The group remains distant and simplified, reinforcing widespread autonomous movement without individual identification."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            390,
+                            220,
+                            960,
+                            960
+                        ],
+                        "desc": "Silver autonomous delivery robot stands in the lower center and bottom-right, shown from a low three-quarter front angle. It has rugged black tires, a carbon-fiber textured front panel, a transparent hood revealing a compact onboard computing unit, and a large camera lens on the front-left corner. A bright blue LED strip runs along the lower body edge."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            290,
+                            430,
+                            420,
+                            820
+                        ],
+                        "desc": "Blue wireframe LiDAR visualization floats above the robot, formed by a dense grid of tiny cyan points and polygonal surface fragments. The shape depicts a three-dimensional obstacle map with vertical scan lines and a circular horizon ring. It serves as a technical scan overlay connected to the perception callout."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            280,
+                            30,
+                            480,
+                            415
+                        ],
+                        "desc": "Dark rectangular technical callout panel in the upper-left quadrant, with a thin orange accent line along its left edge and faint blue circuit traces inside. Its corners are sharp, its surface is matte charcoal, and it frames the perception heading and body text for the first technical section."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            500,
+                            30,
+                            700,
+                            395
+                        ],
+                        "desc": "A dark rectangular technical callout panel occupies the middle-left section, with a thin orange accent line along its left edge and a subtle blue grid texture behind the text. The panel is aligned vertically with the first callout, using the same matte charcoal surface and sharp corners to organize the edge-computing explanation."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            610,
+                            625,
+                            865,
+                            965
+                        ],
+                        "desc": "A dark rectangular technical callout panel sits in the bottom-right area adjacent to the robot's wheel and suspension, with an orange left-edge accent and faint blue circuit lines. The panel is large enough for a heading and three short lines, using matte charcoal fill and sharp edges to match the futuristic logistics infographic."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            25,
+                            110,
+                            115,
+                            560
+                        ],
+                        "text": "Autonomous Frontiers",
+                        "desc": "Large bold white sans-serif title placed at the top-left of the canvas, set immediately to the right of the orange exclamation icon. The typeface is clean, heavy, and modern, with generous letter spacing and no outline. It anchors the infographic's main subject above the monospace system line."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            135,
+                            110,
+                            170,
+                            390
+                        ],
+                        "text": "JetBrains Mono LOG-SYS v.2.0",
+                        "desc": "Small light cyan monospace text placed beneath the main title, aligned with the title's left edge. It uses a technical code-like font with uniform width, lowercase and uppercase letters, and subtle spacing. The line reads like a system identifier and supports the futuristic logistics theme."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            195,
+                            110,
+                            240,
+                            760
+                        ],
+                        "text": "Future Logistics: The Evolution of Autonomous Delivery.",
+                        "desc": "Medium-sized white sans-serif subtitle positioned below the monospace line, extending across the upper-left region. It uses regular weight, tight but readable spacing, and a neutral white fill. The sentence introduces the infographic's theme and sits above the first technical callout panel."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            300,
+                            55,
+                            350,
+                            400
+                        ],
+                        "text": "TECH_PERCEPTION: The Sensory Layer – Multi-Modal Sensor Fusion",
+                        "desc": "Bold white sans-serif heading inside the upper-left callout panel, aligned to the panel's left padding. It is larger than the body text below it, with a technical underscore in the prefix and a clear en dash separating the conceptual phrase. The heading defines the first highlighted technology."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            360,
+                            55,
+                            440,
+                            300
+                        ],
+                        "text": "Uses Lidar, Ultrasonic, and HD Vision\nGenerates a 360-degree real-time map\nCollision-free navigation in dense urban environments",
+                        "desc": "Small light-gray sans-serif body text inside the perception callout, arranged as three left-aligned lines with even vertical spacing. The lines describe the robot's multi-modal sensing capability, real-time mapping, and urban collision avoidance. The text uses a neutral readable weight below the heading."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            425,
+                            320,
+                            470,
+                            405
+                        ],
+                        "text": "10GB per second",
+                        "desc": "Large cyan sans-serif metric placed in the lower-right corner of the perception callout, aligned with the body text's right edge. The number uses bold weight, tight spacing, and a bright blue fill. It quantifies the spatial-data processing rate without adding charts, graphs, or additional numeric tables."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            515,
+                            55,
+                            570,
+                            380
+                        ],
+                        "text": "TECH_DECISION: Edge Computing Core – Edge AI Path Optimization",
+                        "desc": "Bold white sans-serif heading inside the middle-left callout panel, aligned with the panel's left padding. It uses a technical underscore prefix, an en dash, and a compact two-line arrangement. The heading identifies the onboard intelligence section and matches the visual hierarchy of the first callout."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            585,
+                            55,
+                            690,
+                            380
+                        ],
+                        "text": "Onboard neural networks calculate energy-efficient routes in milliseconds\nAlgorithms predict pedestrian behavior and traffic patterns\nLast-mile delivery becomes a silent, optimized flow",
+                        "desc": "Small light-gray sans-serif body text inside the decision callout, arranged as three left-aligned lines with consistent line spacing. The lines explain onboard route calculation, behavioral prediction, and optimized last-mile movement. The text remains neutral, readable, and subordinate to the bold heading above it."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            630,
+                            650,
+                            690,
+                            940
+                        ],
+                        "text": "TECH_EXECUTION: Kinetic Propulsion – All-Terrain Modular Chassis",
+                        "desc": "Bold white sans-serif heading inside the bottom-right callout panel, aligned to the panel's left padding. It uses the same technical prefix format and en dash as the other headings. The heading introduces the mechanical propulsion section adjacent to the robot's wheel and suspension area."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            705,
+                            650,
+                            845,
+                            940
+                        ],
+                        "text": "Independent suspension and high-torque electric motors conquer curbs and uneven surfaces\nModular cargo bays maintain temperature control\nMedical supplies to perishables remain preserved",
+                        "desc": "Small light-gray sans-serif body text inside the execution callout, arranged as three left-aligned lines with even spacing. The lines describe suspension capability, modular temperature-controlled cargo bays, and preservation of medical supplies and perishables. The text is readable, neutral, and subordinate to the bold heading."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            735,
+                            670,
+                            780,
+                            850
+                        ],
+                        "text": "DELIVERY",
+                        "desc": "Large bold white sans-serif word printed on the robot's side panel, partially visible because the robot's body angle cuts off the full surface. The letters are spaced widely, slightly weathered, and follow the panel's perspective. The label identifies the robot's delivery function."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            95,
+                            550,
+                            155,
+                            970
+                        ],
+                        "text": "TECH_FUTURE: The Trend Horizon",
+                        "desc": "Bold white sans-serif heading positioned in the upper-right region over the faded cityscape, aligned near the right margin. It uses the same technical prefix format as the left-side headings but is slightly smaller to balance the layout. The heading introduces the forward-looking section."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            175,
+                            550,
+                            235,
+                            970
+                        ],
+                        "text": "Ubiquitous Autonomy",
+                        "desc": "Large medium-weight white sans-serif heading placed below the future heading on the right side, aligned with the heading's left edge. The phrase uses clean uppercase and title-case letters, with slightly increased letter spacing. It serves as the conceptual subtitle for the trend-horizon section."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            260,
+                            550,
+                            360,
+                            960
+                        ],
+                        "text": "An invisible infrastructure of movement\nmakes distribution as fluid and constant\nas information flow",
+                        "desc": "Small light-gray sans-serif body text placed below 'Ubiquitous Autonomy' on the right side, arranged as three left-aligned lines with comfortable spacing. The text explains the future logistics concept without referencing the separate highlighted phrase. It remains readable against the faded grayscale city backdrop."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            380,
+                            550,
+                            430,
+                            960
+                        ],
+                        "text": "Logistics Internet",
+                        "desc": "Highlighted orange sans-serif phrase placed below the future body text on the right side, aligned with the body's left edge. The letters are bold, compact, and clearly separated from the surrounding gray text. The phrase marks the named future-network concept within the trend-horizon section."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            350,
+                            400,
+                            405,
+                            455
+                        ],
+                        "desc": "A thin cyan connector line extends from the right edge of the perception callout to a small bright orange dot placed on the left side of the LiDAR point cloud. The line uses a precise one-pixel stroke with a subtle blue highlight, and the dot marks the sensory-layer connection."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            595,
+                            390,
+                            635,
+                            530
+                        ],
+                        "desc": "A thin cyan connector line extends from the right edge of the decision callout to a small bright orange dot near the transparent computing module under the robot's hood. The line is straight, precise, and slightly angled downward, visually linking the edge-computing explanation to the onboard hardware."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            745,
+                            585,
+                            780,
+                            635
+                        ],
+                        "desc": "A thin cyan connector line extends from the left edge of the execution callout to a small bright orange dot near the robot's rear wheel and suspension. The line is short, angled, and sharply defined, marking the kinetic-propulsion section while keeping the callout visually attached to the mechanical target."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            30,
+                            35,
+                            95,
+                            95
+                        ],
+                        "desc": "A small orange exclamation mark icon sits at the top-left corner near the title, rendered as a bold vertical rounded rectangle with a solid circular dot beneath it. The icon is bright orange, compact, and aligned above the monospace system label. It functions as a warning-style accent without any additional emblem or frame."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtaqzdmo-n4kbj5.png"
+    },
+    {
+        "prompt": "The infographic, titled \"Foundational Principles for Fund Management Compliance,\" is presented in a vibrant, comic book style with bold colors, dynamic speech bubbles, and action words like \"POW!\", \"BANG!\", and \"ZAP!\" to emphasize key points. The layout is structured into three main horizontal sections, each with its own header and sub-headers, visually separated by bold borders and colorful backgrounds.\n\n**Section 1: Foundational Principles for Fund Management Compliance**\nSubtitle: \"Non-negotiable standards for all operational activities\"\nThis section is divided into three panels:\n- **Panel 1: Safety First Guiding Principle**  \n  Visual: Superman stands heroically beside an open treasure chest filled with gold coins, symbolizing safeguarded funds. The background is yellow with radiating lines, evoking power and protection.\n- **Panel 2: Full Lifecycle Transaction Tracking**  \n  Visual: A flowchart illustrates the transaction lifecycle using icons: a magnifying glass over money (initial inspection), a folder (data storage), a document with a magnifier (review), a graph (analysis), and another document (reporting). Arrows indicate bidirectional tracking and feedback loops.\n- **Panel 3: Independent Quarterly Audits**  \n  Visual: A stern-looking auditor in a suit holds a clipboard labeled \"AUDITOR\" with a red stamp reading \"CERTIFIED.\" The background is red with explosive rays, emphasizing authority and verification.\n\n**Section 2: Service Upgrade Measures for Better Beneficiary Experience**\nSubtitle: \"Blended digital and offline solutions for inclusive access\"\nThis section features three panels promoting improved service delivery:\n- **Panel 1: Full Online Service Access**  \n  Visual: A smiling young man in a yellow shirt uses a smartphone with heart icons and a chat bubble, indicating user satisfaction and digital engagement.\n- **Panel 2: 50% Faster Benefit Disbursement**  \n  Visual: A clock showing 7 days alongside stacks of cash, emphasizing speed. The text “7 DAYS” is prominently displayed in a black oval with yellow font.\n- **Panel 3: Dedicated Special Needs Service Counters**  \n  Visual: A female staff member in a blue uniform assists an elderly male beneficiary at a counter, highlighting personalized, accessible service.\n\n**Section 3: Multi-Layer Risk Control for Long-Term Fund Sustainability**\nSubtitle: \"Preventing fraud and misuse while increasing public trust\"\nThis section includes three panels focused on risk mitigation and transparency:\n- **Panel 1: AI Real-Time Anomaly Detection**  \n  Visual: A futuristic robot with glowing eyes points at a screen displaying graphs, charts, and a red warning triangle with an exclamation mark, symbolizing automated threat detection.\n- **Panel 2: Cross-Department Eligibility Verification**  \n  Visual: A network diagram shows multiple laptops and desktops connected to a central globe icon, illustrating data sharing and cross-departmental collaboration for verification.\n- **Panel 3: Monthly Public Transparency Reports**  \n  Visual: A computer monitor displays a pie chart and text, with a badge labeled \"PUBLIC OVERSIGHT\" in red and yellow, underscoring accountability and public reporting.\n\nOverall, the infographic employs a pop-art aesthetic with halftone dots, thick black outlines, and high-contrast colors to convey information in an engaging, memorable way. All textual content is in English, and the design effectively communicates complex compliance and service strategies through simplified, relatable visuals.",
+        "jsonprompt": {
+            "aspect_ratio": "1:1",
+            "high_level_description": "A square graphic-design comic infographic with three horizontal fund-compliance sections, featuring Superman (DC Comics), an auditor, a robot, service icons, and bold English headlines.",
+            "style_description": {
+                "aesthetics": "vibrant, high-contrast, comic-book pop-art, bold outlines, action-burst energy",
+                "lighting": "flat comic lighting with hard vector highlights and clean contrasting shapes",
+                "medium": "graphic_design",
+                "art_style": "comic book pop-art infographic with thick black outlines, halftone dots, high-contrast color fields, and action-burst typography",
+                "color_palette": [
+                    "#FFD400",
+                    "#E4002B",
+                    "#0057B8",
+                    "#FFFFFF",
+                    "#000000",
+                    "#FFB300",
+                    "#2ECC71",
+                    "#00C2FF",
+                    "#FF7A00",
+                    "#7B2FF7"
+                ]
+            },
+            "compositional_deconstruction": {
+                "background": "White square comic sheet arranged into three full-width horizontal sections separated by thick black borders, each section divided into three adjacent panels, with clean infographic spacing.",
+                "elements": [
+                    {
+                        "type": "text",
+                        "bbox": [
+                            20,
+                            80,
+                            95,
+                            920
+                        ],
+                        "text": "Foundational Principles for Fund Management Compliance",
+                        "desc": "Centered top banner text, bold upright display typeface, large black letters with white inner highlight and red offset, horizontal, spanning the full width."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            100,
+                            140,
+                            130,
+                            860
+                        ],
+                        "text": "Non-negotiable standards for all operational activities",
+                        "desc": "Centered subtitle below the title, bold upright sans-serif, medium black text on a yellow horizontal strip, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            135,
+                            30,
+                            165,
+                            330
+                        ],
+                        "text": "Safety First Guiding Principle",
+                        "desc": "Left-aligned in the top of the upper-left panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            135,
+                            350,
+                            165,
+                            650
+                        ],
+                        "text": "Full Lifecycle Transaction Tracking",
+                        "desc": "Centered in the top of the upper-center panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            135,
+                            670,
+                            165,
+                            970
+                        ],
+                        "text": "Independent Quarterly Audits",
+                        "desc": "Centered in the top of the upper-right panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            170,
+                            180,
+                            220,
+                            300
+                        ],
+                        "desc": "Jagged yellow comic burst with a thick black outline, positioned near the upper-right of the Superman panel, behind the 'POW!' text."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            175,
+                            185,
+                            215,
+                            295
+                        ],
+                        "text": "POW!",
+                        "desc": "Inside the yellow burst, bold upright display typeface, red letters with a black outline, angled slightly."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            180,
+                            50,
+                            360,
+                            300
+                        ],
+                        "desc": "Superman (DC Comics) in a red cape, blue suit, and yellow emblem stands with one fist raised, feet planted, facing the open chest on the right. Classic comic pose, muscular build, short black hair, determined expression."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            250,
+                            210,
+                            380,
+                            320
+                        ],
+                        "desc": "Open wooden treasure chest with a thick black outline, gold coins spilling over the front edge, small gemstones beside it, positioned to the right of Superman on a yellow radiating-line panel field."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            175,
+                            370,
+                            380,
+                            630
+                        ],
+                        "desc": "Comic flowchart on a light-blue panel field, with five bold icons: magnifying glass over dollar bills, folder, document with magnifier, bar graph, and report document. Thick black arrows link them in a bidirectional loop, ending in a feedback arrow."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            170,
+                            690,
+                            220,
+                            820
+                        ],
+                        "desc": "Jagged red comic burst with a thick black outline, positioned near the top of the auditor panel, behind the 'BANG!' text."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            175,
+                            695,
+                            215,
+                            815
+                        ],
+                        "text": "BANG!",
+                        "desc": "Inside the red burst, bold upright display typeface, yellow letters with a black outline, angled."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            180,
+                            690,
+                            370,
+                            960
+                        ],
+                        "desc": "Stern male auditor in a charcoal suit, white shirt, and red tie holds a brown clipboard, short grey hair, serious frown, standing against a red explosive-ray field with a white ID badge on the left lapel."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            270,
+                            730,
+                            305,
+                            850
+                        ],
+                        "text": "AUDITOR",
+                        "desc": "On the brown clipboard, bold upright sans-serif, small black text on a white rectangular label, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            330,
+                            860,
+                            375,
+                            955
+                        ],
+                        "text": "CERTIFIED",
+                        "desc": "Red rubber-stamp mark on the lower-right of the clipboard, bold upright display typeface, distressed red letters, slightly rotated."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            395,
+                            80,
+                            435,
+                            920
+                        ],
+                        "text": "Service Upgrade Measures for Better Beneficiary Experience",
+                        "desc": "Centered section title across the middle band, bold upright display typeface, large black letters with a white highlight and blue offset, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            435,
+                            140,
+                            465,
+                            860
+                        ],
+                        "text": "Blended digital and offline solutions for inclusive access",
+                        "desc": "Centered subtitle below the section title, bold upright sans-serif, medium black text on a cyan horizontal strip, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            470,
+                            30,
+                            500,
+                            330
+                        ],
+                        "text": "Full Online Service Access",
+                        "desc": "Left-aligned in the top of the middle-left panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            470,
+                            350,
+                            500,
+                            650
+                        ],
+                        "text": "50% Faster Benefit Disbursement",
+                        "desc": "Centered in the top of the middle-center panel, bold upright sans-serif, black text with a red '50%' accent, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            470,
+                            670,
+                            500,
+                            970
+                        ],
+                        "text": "Dedicated Special Needs Service Counters",
+                        "desc": "Centered in the top of the middle-right panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            510,
+                            40,
+                            670,
+                            320
+                        ],
+                        "desc": "Smiling young man with short black hair and medium skin tone wears a yellow T-shirt, holds a black smartphone, looks at the screen, with a relaxed standing pose in a bright service panel."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            520,
+                            210,
+                            580,
+                            310
+                        ],
+                        "desc": "Three small red heart icons with black outlines, floating above the smartphone, arranged in a short diagonal near the upper part of the panel, representing user satisfaction."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            570,
+                            250,
+                            640,
+                            320
+                        ],
+                        "desc": "White rounded chat bubble with a black outline and three grey dots, positioned in the upper-right area of the service panel, indicating digital engagement."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            515,
+                            400,
+                            670,
+                            600
+                        ],
+                        "desc": "Round black-outlined clock with a white face, red hands, and a yellow rim, positioned next to cash stacks, showing a fast seven-day turnaround theme with bold tick marks around the bezel."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            560,
+                            590,
+                            680,
+                            660
+                        ],
+                        "desc": "Three stacks of paper currency bound with black bands, green bills with dark green edge lines, leaning slightly, placed below the clock in a comic-style cluster with thick outlines, representing benefit disbursement."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            505,
+                            420,
+                            550,
+                            650
+                        ],
+                        "desc": "Black oval chip with a thick yellow border, positioned over the clock near the top of the disbursement panel, carrying the '7 DAYS' text in a bold pop-art callout style."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            510,
+                            425,
+                            545,
+                            645
+                        ],
+                        "text": "7 DAYS",
+                        "desc": "Inside the black oval chip, bold upright display typeface, large yellow letters, horizontal."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            510,
+                            700,
+                            680,
+                            955
+                        ],
+                        "desc": "Female staff member in a blue uniform and ID lanyard stands behind a beige counter, assisting an elderly male beneficiary in a brown jacket who leans on the counter surface."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            695,
+                            80,
+                            735,
+                            920
+                        ],
+                        "text": "Multi-Layer Risk Control for Long-Term Fund Sustainability",
+                        "desc": "Centered section title across the bottom band, bold upright display typeface, large black letters with a white highlight and purple offset, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            735,
+                            140,
+                            765,
+                            860
+                        ],
+                        "text": "Preventing fraud and misuse while increasing public trust",
+                        "desc": "Centered subtitle below the section title, bold upright sans-serif, medium black text on an orange horizontal strip, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            770,
+                            30,
+                            800,
+                            330
+                        ],
+                        "text": "AI Real-Time Anomaly Detection",
+                        "desc": "Left-aligned in the top of the lower-left panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            770,
+                            350,
+                            800,
+                            650
+                        ],
+                        "text": "Cross-Department Eligibility Verification",
+                        "desc": "Centered in the top of the lower-center panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            770,
+                            670,
+                            800,
+                            970
+                        ],
+                        "text": "Monthly Public Transparency Reports",
+                        "desc": "Centered in the top of the lower-right panel, bold upright sans-serif, small black text on a white field, horizontal."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            810,
+                            40,
+                            960,
+                            190
+                        ],
+                        "desc": "Futuristic silver robot with a rectangular head, cyan light-emitting eyes, and black joint lines points one arm toward the warning screen, standing in a heroic stance on a dark-blue panel field with yellow circuit accents."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            790,
+                            70,
+                            840,
+                            190
+                        ],
+                        "desc": "Jagged cyan comic burst with a thick black outline, positioned near the upper-left of the robot panel, behind the 'ZAP!' text."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            795,
+                            75,
+                            835,
+                            185
+                        ],
+                        "text": "ZAP!",
+                        "desc": "Inside the cyan burst, bold upright display typeface, yellow letters with a black outline, angled."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            805,
+                            210,
+                            965,
+                            330
+                        ],
+                        "desc": "Futuristic monitor with a black bezel displays a white interface containing a red line graph, a bar chart, and a red warning triangle, screen edges outlined in bright cyan."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            850,
+                            260,
+                            900,
+                            310
+                        ],
+                        "text": "!",
+                        "desc": "Large white exclamation mark inside the red warning triangle on the monitor screen, bold upright display typeface, centered."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            805,
+                            380,
+                            965,
+                            630
+                        ],
+                        "desc": "Flat network diagram on a light-violet panel field, showing five silver laptops and two desktops connected by black lines to a central blue globe icon with white latitude rings and small green status dots at each connection node."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            810,
+                            700,
+                            965,
+                            920
+                        ],
+                        "desc": "Desktop monitor with a black stand and silver bezel displays a white dashboard with a blue pie chart, grey text blocks, and a small red notification icon, positioned in the lower-right panel."
+                    },
+                    {
+                        "type": "obj",
+                        "bbox": [
+                            900,
+                            850,
+                            945,
+                            965
+                        ],
+                        "desc": "Red shield badge with a thick yellow border and black outline, positioned beside the monitor at the lower edge, carrying the 'PUBLIC OVERSIGHT' label in a bold accountability callout style."
+                    },
+                    {
+                        "type": "text",
+                        "bbox": [
+                            905,
+                            855,
+                            940,
+                            960
+                        ],
+                        "text": "PUBLIC OVERSIGHT",
+                        "desc": "On the red shield badge, bold upright display typeface, white letters with a black outline, horizontal."
+                    }
+                ]
+            }
+        },
+        "url": "/example_collection/design-mtarrmen-n6dde2.png"
+    }
+]
