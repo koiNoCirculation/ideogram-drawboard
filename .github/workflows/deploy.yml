@@ -19,6 +19,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # github.repository is "owner/repo"; the project-page subpath is the repo
+    # name (last segment). There is no github.repository_name context — it
+    # expands to an empty string and silently drops the base path.
+    env:
+      REPO_SLUG: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,16 +37,14 @@ jobs:
       # experiments.baseUrl comes from this variable (app.config.js): asset
       # links in the exported HTML are prefixed with the repo subpath.
       - name: Export web build (subpath base)
-        run: npx expo export --platform web
-        env:
-          EXPO_BASE_URL: "/${{ github.repository_name }}"
+        run: EXPO_BASE_URL="/${REPO_SLUG##*/}" npx expo export --platform web
 
       # Verify the exported HTML actually carries the subpath prefix on its
       # asset links (experiments.baseUrl from EXPO_BASE_URL above). Without it
       # the project page 404s on every /_expo/... asset and renders blank.
       - name: Verify index.html asset links carry the repo base
         run: |
-          BASE="/${{ github.repository_name }}"
+          BASE="/${REPO_SLUG##*/}"
           grep -q "src=\"$BASE/_expo/" dist/index.html \
             || { echo "::error::index.html has no $BASE-prefixed script src"; exit 1; }
           grep -q 'src="/_expo/' dist/index.html \

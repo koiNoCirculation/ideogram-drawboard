@@ -18,7 +18,7 @@ SPA 部署到 GH Pages（纯静态服务器）的两个缺口及方案：
 - `src/app/services/publicAsset.ts`（新）：`getPublicAssetUrl(path)` = `process.env.EXPO_BASE_URL + path`（构建时内联，与 router 同源）。
 - 应用内根相对 fetch 全部改经 `getPublicAssetUrl`：`system_prompt.txt`（useStartDesign）、`system_prompt_rewrite_adapt_bbox.txt`（useGeneration）、`example_collection/example.json`（exampleCollection 模块常量）+ 示例 png（根相对 url 加前缀、绝对 http(s) 透传）。
 - `.gitignore` 增 `dist/`。
-- `.github/workflows/deploy.yml`（新）：push 到 `master`/`github-pages` + workflow_dispatch；`EXPO_BASE_URL=/${{ github.repository_name }}` 导出 → 注入 → `peaceiris/actions-gh-pages` 发布 `dist/` 到 `gh-pages` 分支（clean、contents:write、concurrency 取消在途部署）。Pages 源需手动设为 branch `gh-pages` / (root)，需公开仓库。
+- `.github/workflows/deploy.yml`（新）：push 到 `github-pages` + workflow_dispatch；job 级 `env: REPO_SLUG: ${{ github.repository }}`（`owner/repo`）→ `EXPO_BASE_URL="/${REPO_SLUG##*/}"` 导出（repo 名取最后一段；**`github.repository_name` 上下文不存在**，静默展开为空串 → base 丢失 → 资产无前缀白屏，首版 CI 因此发布失败）→ 导出后校验 index.html script src 必须带 base 前缀（无前缀 `::error::` 失败）→ 注入 → `peaceiris/actions-gh-pages` 发布 `dist/` 到 `gh-pages` 分支（clean、contents:write、concurrency 取消在途部署）。Pages 源需手动设为 branch `gh-pages` / (root)，需公开仓库。
 
 ---Start of test cases---
 - `getPublicAssetUrl`：`EXPO_BASE_URL` 未设 → 路径原样；设 `/DrawBoard` → 加前缀。
