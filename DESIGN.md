@@ -15,10 +15,10 @@ src/
     index.ts             统一导出
   app/
     _layout.tsx            根布局（expo-router Stack，外层包 I18nProvider）
-    index.tsx              首页：输入描述、选比例/尺寸，最近设计列表
+    index.tsx              首页：输入描述（prompt 框多行、输入条高度自适应 56–200px）、选比例/尺寸，prompt 框拖入/粘贴参考图（预览行），最近设计列表
     design.tsx             设计页：薄编排层（状态声明 + 组合下列 hooks/组件，自身 <400 行）
     types.ts               RefinedPrompt / CanvasElement / isEmptyElement
-    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试→handoff（含原始 prompt）→跳转；红色 LLM 错误行：重试中 5 秒自动消失、最终失败持久到下次提交）
+    useStartDesign.ts      首页「开始设计」流程 hook（校验→refine 重试（携带参考图）→handoff（含原始 prompt）→跳转；红色 LLM 错误行：重试中 5 秒自动消失、最终失败持久到下次提交）
     useImageUris.ts        图片 ref→可显示 uri 的异步解析 hook（ref 恒为 IndexedDB id，查库得 data URI，按索引对齐；首页卡片与设计页共用）
     design/                设计页逻辑（从 design.tsx 拆出，每文件 <400 行）
       constants.ts         常量：最小尺寸、缩放范围/档、对齐阈值、gridCellUnits 网格分档、撤销上限、字体预设
@@ -35,7 +35,7 @@ src/
       ColorPicker.tsx      取色器（SV 平面 + 色相条 + RGB/Hex 输入 + 预设色）
       SettingsDialog.tsx   设置对话框（两个下拉 + 五个文本框，内联展开式下拉）
       LanguageSwitcher.tsx 界面语言切换器（国旗 SVG 按钮 + 下拉菜单，portal 到 body，见「i18n」节）
-      design/              设计页展示组件（props 驱动，无自身状态）
+      design/              设计页展示组件（props 驱动，无自身状态；例外 BackgroundEditor 自持对话框开关/草稿态）
         CanvasStage.tsx    画布区：网格/元素开关、滚动画布（图 + 网格 + 元素层 + 辅助线 + tooltip + 草稿矩形 + 标尺 + 图层列表）、历史条与保存/生成行
         CanvasRulers.tsx   画布上/左边缘标尺（0–1000 双轴，向外延伸、随画布缩放、与网格对齐，数字密度按档位）
         LayerList.tsx      图层列表（画布区右下角：眼睛显隐开关 + 类型图标 + 30 字截断标签，最多 8 行）
@@ -46,22 +46,31 @@ src/
         ContextMenu.tsx    元素/画布右键菜单（元素菜单：复制/粘贴 + 编辑 + 删除；画布空白处：仅粘贴）
         HeaderBackButton.tsx  Stack 页头返回按钮（design 标题左侧，headerLeft 注入；刷新后仍可用，见「页面与导航」节）
         EditDialog.tsx     元素编辑对话框（desc/text + text 元素字体选项）
+        BackgroundEditor.tsx background 展示 + 编辑对话框（点击背景块弹出预填编辑框，保存写回并记一步撤销，对话框 portal 到 body，见「背景编辑」节）
         PromptDialog.tsx   显示 Prompt 对话框（左：原始 prompt / 右：增强后结构化 JSON，只读双栏）
     services/
-      PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt）、resolveContradictionInBBox（改写 desc）
+      PromptRefiner.ts     两个 LLM 调用：refine（生成 prompt，可选参考图多模态输入，见「PromptRefiner.ts」节）、resolveContradictionInBBox（改写 desc）
       IdeogramPrompt.ts    normalizePromptForIdeogram：发送/保存前规范化 JSON prompt
       imageDownload.ts     downloadImage：fetch 图片 → blob → 临时 `<a download>` 点击触发浏览器保存
       imageStore.ts        生成图持久化：生成后抓图转 base64 data URI 存 IndexedDB（随机 id 为键，id 是唯一 ref 种类，无 URL 透传）+ 按 id 查库解析，见「imageStore.ts」节
+      imageFile.ts         fileToDataUri：拖入的 image File → base64 data URI（分块 btoa，mime 缺省 image/png），供参考图预览与多模态 refine 输入
       settings.ts          设置项定义、localStorage 持久化、厂商端点映射、缺失校验
       designStore.ts       localStorage 设计持久化（{prompt, images, rawPrompt} 框架）+ 导航 handoff（未保存设计按 id 暂存，含原始 prompt 与可选种子 images）+ 返回首页导航标志 + newDesignId
       exampleCollection.ts 首页示例集：fetch public/example_collection/example.json，示例图先持久化进 IndexedDB 图片库（稳定 id，check-then-store）+ 映射为 Design 形状（sizeFromRatio / exampleToDesign），见「index.tsx」节
+      publicAsset.ts       getPublicAssetUrl：给根相对 public 资产路径加 `process.env.EXPO_BASE_URL` 前缀（构建时内联，本地开发为空，子路径部署用，见「GitHub Pages 部署」节）
       color.ts             hex/RGB/HSV 互转与 clamp 工具
     test/
-      services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload、imageStore）
+      services/            jest 单测（PromptRefiner、IdeogramPrompt、settings、designStore、imageDownload、imageStore、publicAsset）
       i18n/                jest 单测（locale 加载/持久化、双语映射、占位替换、key 对齐）
+app.config.js              Expo 动态配置：`experiments.baseUrl = process.env.EXPO_BASE_URL || ''`（GitHub Pages 子路径部署；不设时本地开发不变，见「GitHub Pages 部署」节）
+.github/workflows/deploy.yml  CI：`EXPO_BASE_URL=/<repo 名>` 导出 → 注入 404 重定向 bootstrap → dist/ 发布到 `gh-pages` 分支
+scripts/
+  inject_github_pages_bootstrap.cjs  向 dist/index.html 的 `<head>` 注入 404 重定向 bootstrap（MARKER 幂等）
 public/
   system_prompt.txt                       生成 JSON prompt 的 LLM 系统提示词（完整契约）
   system_prompt_rewrite_adapt_bbox.txt    bbox 改写 LLM 的系统提示词（只修 desc 与 bbox 矛盾）
+  404.html                     GitHub Pages 深链 404 重定向（spa-github-pages，`pathSegmentsToKeep = 1` 保留 /repo 段）
+  .nojekyll                    关闭 Jekyll 处理（导出产物含 `_` 前缀文件，会被 Jekyll 忽略）
 ```
 
 外部依赖（均可在设置界面配置，见「设置」节）：
@@ -119,7 +128,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - **`src/i18n/`**：`translations.ts` 双语词表——`enUS` 为基准（~74 个 key），`zhCN` 类型是 `Record<keyof typeof enUS, string>`，编译期强制 key 对齐、不许缺值；另导出 `Locale`（`'en-US' | 'zh-CN'`）、`LOCALES`、`DEFAULT_LOCALE = 'en-US'`、`LOCALE_STORAGE_KEY = 'drawboard.locale'`、`LOCALE_FLAGS`（🇺🇸 / 🇨🇳）。`I18nContext.tsx`：`I18nProvider`（根布局 `_layout.tsx` 包裹 Stack）+ `useI18n()`（`locale` / `setLocale` / `t`）；`t(key, vars?)` 做 `{name}` 占位替换，未知 key 原样透传（不崩）。
 - **locale 持久化**：选择写 `localStorage['drawboard.locale']`，刷新/重开保持；`loadLocale` 读非法值（或无存储）回退 `en-US`。
 - **`LanguageSwitcher`**（components/LanguageSwitcher.tsx）：国旗按钮（flag-emoji 风格内联 SVG data-URI，按钮 testID `lang-switcher`、旗帜本体 `lang-flag-<locale>`；不用区域指示符 emoji——缺字体时渲染成 "US"/"CN" 字母，且 RN-web `<Image>` 对该 data-URI 不出图，故用带 CSS background 的普通 View，同画布网格机制），点击开下拉（两个选项各带小国旗 + 语言自称文案——`LOCALE_NAMES`：en-US → "English"、zh-CN → "中文"，自称不随当前 locale 变化；testID `lang-option-<locale>`，视口内钳制、贴底翻到上方；透明全屏遮罩点外关闭）。**遮罩与菜单 `createPortal` 到 `document.body`**（同 ColorPalette popover）——不 portal 的话 fixed 下拉会被同层屏幕内容盖住（stacking context）。两页各插一个：**首页**齿轮左侧（绝对定位 `right: 72`）、**设计页**页头齿轮左侧（流式 `marginLeft: 8`）。
-- **覆盖**：首页（侧栏 Home/Recent Designs 导航、图片墙标题/空态、输入区标题、W/H/自定义、prompt 占位符、开始按钮无障碍标签（开始设计/处理中）、红色 LLM 错误行（缺设置 `missingSettingsAlert`、重试 `refineRetrying`、全部失败 `refineAllFailed`、请求失败的原始错误文字））、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签与按钮——设置对话框的保存按钮用独立 key `saveSettings`（en "Save Settings" / zh "保存设置"，不与设计页 Save 的 `save`（zh "保存设计"）混用）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
+- **覆盖**：首页（侧栏 Home/Recent Designs 导航、图片墙标题/空态、输入区标题、W/H/自定义、prompt 占位符、开始按钮无障碍标签（开始设计/处理中）、参考图删除按钮 `removeImage`、红色 LLM 错误行（缺设置 `missingSettingsAlert`、重试 `refineRetrying`、全部失败 `refineAllFailed`、请求失败的原始错误文字））、设计页（元数据六标签 + 背景标签、网格/元素开关、画布占位、工具提示、Save/Generate/Download/Show Prompt、已保存、历史条「Generated (N)」、右键菜单、编辑对话框含字体区、背景编辑对话框标题（`editBackground`）、显示 Prompt 对话框两栏标签、调色盘 popover、设置对话框全部标签与按钮——设置对话框的保存按钮用独立 key `saveSettings`（en "Save Settings" / zh "保存设置"，不与设计页 Save 的 `save`（zh "保存设计"）混用）、生成/下载错误提示（缺设置、空元素、请求失败、无图可下、重写失败等）。
 
 ## 页面与导航
 
@@ -129,6 +138,18 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 首页图片墙（Recent Designs 模式）点 tile → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
 - 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
 - 设计页的返回按钮在 **Stack 页头**（"design" 标题左侧），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
+
+## GitHub Pages 部署
+
+以 **project page**（`https://<user>.github.io/<repo>/`）部署，应用挂在 `/<repo>/` 子路径下。本地开发（`expo start --web`）不受任何影响：base 仅在导出时由环境变量注入。
+
+- **子路径 base**：`app.config.js`（函数式动态配置）把 `experiments.baseUrl` 设为 `process.env.EXPO_BASE_URL || ''`——不设环境变量时本地开发逐字节不变。导出链路（均在安装的源码中验证）：Expo config → Metro `baseUrl` → **babel-preset-expo 把 `process.env.EXPO_BASE_URL` 内联进 bundle**（`NODE_ENV === 'test'` 时跳过内联，jest 读到真实 Node 环境，故单测可设置/删除该变量）→ 导出 HTML 的资产 link 加前缀 + 运行时 router `stripBaseUrl` 剥前缀（仅在 `NODE_ENV !== 'development'` 生效，dev server 不剥）。
+- **深链 404 重定向**（参考 rafgraph/spa-github-pages）：GH Pages 是纯静态服务器，直接加载/刷新前端路由（`/repo/design?id=…`）没有对应文件 → 404。`public/404.html`（原样搬运其 MIT 许可重定向脚本，**`pathSegmentsToKeep = 1`** 保留 `/repo` 段）把 path+query 改写成纯 query（`/repo/?/design~and~id=…`，`~and~` 编码 `&`）加载 index.html；`scripts/inject_github_pages_bootstrap.cjs` 在**导出后**向 `dist/index.html` 的 `<head>` 注入配套 bootstrap `<script>`（MARKER `spa-github-pages-redirect-bootstrap` 幂等；body 里应用 bundle 是 `<script defer>`，head 内联脚本先执行），`history.replaceState` 还原真实路径后 router 照常路由。Expo 导出没有 post-export 钩子，故用独立脚本（CI 与本地 e2e 都调用它）。
+- **SPA 输出（`web.output: "single"`，app.json）**：必须保持 `"single"`（单 index.html、无预渲染内容，纯客户端渲染——spa-github-pages 机制的设计前提）。若用 `"static"`（新版 create-expo-app 模板默认），导出会为每个路由预渲染 HTML；而 404 深链链最终总是伺服 `index.html`（预渲染的首页内容），客户端 router 却在其上渲染 `/design` 等实际路由 → React #418 hydration mismatch，深链页白屏。
+- **Jekyll**：`public/.nojekyll`（空文件，随 public/ 拷进 dist 根）——Jekyll 会忽略 `_` 前缀文件，而导出产物含 `_expo/` 等。
+- **应用内根相对 fetch** 统一经 `getPublicAssetUrl`（`services/publicAsset.ts`，构建时内联同一个 `process.env.EXPO_BASE_URL`，与 router 同源；根部署时前缀为空）：`system_prompt.txt`（useStartDesign）、`system_prompt_rewrite_adapt_bbox.txt`（useGeneration）、`example_collection/example.json` 与示例 png（exampleCollection——根相对 url 加前缀，绝对 http(s) url 原样透传）。
+- **CI**（`.github/workflows/deploy.yml`）：push 到 `master`/`github-pages` 或手动触发 → `EXPO_BASE_URL=/${{ github.repository_name }}` 跑 `npx expo export --platform web`（base 跟随 repo 名，改名/迁移无需改代码）→ 注入 bootstrap → `peaceiris/actions-gh-pages` 把 `dist/` 发布到 **`gh-pages` 分支**（`clean: true`，`GITHUB_TOKEN` 需 `contents: write`）。**Pages 源需在仓库 Settings → Pages 手动设为 branch `gh-pages` / (root)**；需要**公开仓库**（免费档）。workflow 不负责建仓库/配 Pages。
+- **本地验证** `node scripts/e2e_github_pages.cjs`（导出需要 8081 空闲——in-process Metro 绑定该端口）：`EXPO_BASE_URL=/DrawBoard` 真实导出 → 注入 → 进程内 GH-Pages 模拟服务器（:8082，dist 挂 `/DrawBoard/` 下、缺失路径以 status 404 回 404.html）→ Playwright 断言：导出为 SPA 形态（index.html 在、无 per-route SSG 文件——`web.output: "single"`，见上）、首页全部资产 URL 带 base 前缀且示例墙全量出图（证明带前缀的 example.json/png fetch 在真实导出中生效）、深链 `/DrawBoard/design?id=…` 走完整 404 链后落在打开的设计页（标题=HLD、元素渲染）、未知路径 404→重写→URL 还原无崩溃、dist 静态文件齐备（404.html 的 `pathSegmentsToKeep = 1`、.nojekyll）、注入幂等。
 
 ## index.tsx（首页）
 
@@ -144,9 +165,10 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
    - 选非 custom 比例时：以 1024 为基准算出默认 W/H；随后在 W 或 H 输入数字，另一边按比例自动联动（取整）。
    - 选 custom 后 W/H 互不联动，长宽比取 `${W}:${H}`。
 3. W/H 行（居中；输入 testID `width-input` / `height-input`）。
-4. **prompt 输入条**（Ideogram 式圆角胶囊，高 56；占位符 `promptPlaceholder` "Generate new or upload & edit..."；testID `prompt-input`）；条内右侧嵌 **40px 黑色圆形上箭头按钮**（lucide `ArrowUp`，testID `start-design-button`）作为「开始设计」触发器——处理中显示白色 ActivityIndicator，按钮文案（`startDesign` / `processing`）仅作无障碍标签（aria-label）。
-5. `useStartDesign` 流程：prompt 非空且 LLM 设置项齐全（缺失则输入条上方**红色错误行**列出缺项并停止，不发起请求）→ `refine(system_prompt.txt, prompt, ratio)`（端点/密钥/模型名取自设置）得到 JSON prompt 字符串。**JSON 格式校验 + 重试**：LLM（temperature 1.0）可能返回无法 `JSON.parse` 的回答，每次尝试后立即解析，失败时在输入条上方显示红色错误条（"retrying" 期间 **5 秒后自动消失**，新的失败重新计时）并重试，最多 `REFINE_MAX_ATTEMPTS = 3` 次，全部失败后错误条转为持久（不自动消失、下次提交才清除）不跳转。校验通过 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。**LLM 端点未设置正确时的其余失败**（网络不可达 `Failed to fetch`、HTTP 错误 `LLM API Error (状态码): 响应体`、system prompt 加载失败）同样在红色错误行显示错误文字、持久到下次提交。`Alert.alert` 在 RN-web 上是 **no-op**（浏览器收不到 dialog），所以所有 LLM 侧失败都走红色错误行（testID `refine-error`）而非 Alert；错误行样式：浅红底 + 1px #E53935 边框、文字 #E53935，位于输入条上方；每次提交开始时先清除上一轮错误。
-6. 页面右上角齿轮按钮（绝对定位）：打开设置对话框；齿轮左侧紧邻 `LanguageSwitcher` 语言切换器（见「i18n」节）。
+4. **参考图预览行**（有参考图时渲染；W/H 行与 prompt 输入条之间，居中，间距 8）：每张参考图（拖入或粘贴）一张 48×48 缩略图（圆角 6、1px #DDD 边，testID `image-preview-<i>`），右上角 16px 半透明黑圆 × 按钮（lucide `X`，testID `image-preview-remove-<i>`，aria-label `removeImage`）删除该图（列表重新索引）。图片是**首页会话状态**（data URI 数组），不进 handoff/store，跳转后丢失。
+5. **prompt 输入条**（Ideogram 式圆角胶囊，基础高 56px（随多行文本自适应，见下）；占位符 `promptPlaceholder` "Generate new or upload & edit..."；testID `prompt-input`；外层 testID `prompt-dropzone`）；**多行输入**：输入框 `multiline`（web 渲染 textarea），Enter 插入换行；输入条高度随文本内容自适应——每次 `prompt` 变化用 `useLayoutEffect` 把 textarea 临时压到 `height:1px` 再读 `scrollHeight`（纯文本内容高度；不能直接用它的 scrollHeight——flex:1 下随输入条盒子变高，`height:auto` 又受 rows 属性约束）+12 后钳制到 [56, 200]（`MIN/MAX_INPUT_BAR_HEIGHT`），文本超出 200px 上限时输入框 `overflow:scroll` 内部滚动；展开时文本改顶部对齐 + 8px 上内边距，缩回单行恢复居中。条内右侧嵌 **40px 黑色圆形上箭头按钮**（lucide `ArrowUp`，testID `start-design-button`）作为「开始设计」触发器——处理中显示白色 ActivityIndicator，按钮文案（`startDesign` / `processing`）仅作无障碍标签（aria-label）。**拖入参考图**：RN 无原生 DnD，对 `prompt-dropzone` 的 DOM 节点挂原生 `dragover/dragleave/drop` 监听（同设计页 canvas 滚轮缩放的 testID 查询模式）——`dragover` preventDefault 并置高亮态（边框 #007AFF，仅变色不改变框宽）、文件移出（`dragleave` 且 relatedTarget 不在条内）复位；`drop` 时取 `dataTransfer.files` 中所有 `image/*` 文件（非图片忽略），逐个 `fileToDataUri`（services/imageFile.ts，分块 btoa）转 data URI 追加进预览行。**剪贴板粘贴（Ctrl+V）**：同一节点上挂 `paste` 监听——`clipboardData.items` 里含 `image/*` 文件项（如截图）时同样取 `getAsFile()` 转 data URI 追加进预览行并 `preventDefault`（文本框不重复插入）；**纯文本粘贴不被消费**（默认文本插入照常）。
+6. `useStartDesign` 流程：prompt 非空且 LLM 设置项齐全（缺失则输入条上方**红色错误行**列出缺项并停止，不发起请求）→ `refine(system_prompt.txt, prompt, ratio, refImages)`（端点/密钥/模型名取自设置；`refImages` 为预览行里的参考图 data URI 数组，非空时以多模态格式进请求，见「PromptRefiner.ts」节）得到 JSON prompt 字符串。**JSON 格式校验 + 重试**：LLM（temperature 1.0）可能返回无法 `JSON.parse` 的回答，每次尝试后立即解析，失败时在输入条上方显示红色错误条（"retrying" 期间 **5 秒后自动消失**，新的失败重新计时）并重试，最多 `REFINE_MAX_ATTEMPTS = 3` 次，全部失败后错误条转为持久（不自动消失、下次提交才清除）不跳转。校验通过 → 生成新设计 id、把 prompt 与 W/H 写入 handoff（`setDesignHandoff`，见「页面与导航」节）→ URL 只带 `id` 跳 design 页。**LLM 端点未设置正确时的其余失败**（网络不可达 `Failed to fetch`、HTTP 错误 `LLM API Error (状态码): 响应体`、system prompt 加载失败）同样在红色错误行显示错误文字、持久到下次提交。`Alert.alert` 在 RN-web 上是 **no-op**（浏览器收不到 dialog），所以所有 LLM 侧失败都走红色错误行（testID `refine-error`）而非 Alert；错误行样式：浅红底 + 1px #E53935 边框、文字 #E53935，位于输入条上方；每次提交开始时先清除上一轮错误。
+7. 页面右上角齿轮按钮（绝对定位）：打开设置对话框；齿轮左侧紧邻 `LanguageSwitcher` 语言切换器（见「i18n」节）。
 
 **图片墙**（`components/RecentDesignsWall.tsx`，props 驱动，主列下方占满宽度；组件本身无 `active` prop、标题 `titleText` 非空才渲染，两份数据由 index.tsx 按 `activeSection` 切换传入）：
 - **Home 模式（默认）**：显示打包的**示例集**——`exampleCollection.ts` 挂载时 fetch `public/example_collection/example.json`（每项 = 原始 `prompt` + `jsonprompt` + 生成图 `url`），**先把每张示例图抓图持久化进 IndexedDB 图片库**（稳定 id = `img-<url 文件名>`，check-then-store：已在库则不重复抓，约 2MB base64 转换每浏览器只做一次；单张失败该条目 `imageId=null`、无 tile，不影响其余），再经 `exampleToDesign` 映射为 `Design` 形状（id 取 url 文件名、`images=[imageId]`（持久化失败为空数组）、`rawPrompt=prompt`、size 由 `aspect_ratio` 经 `sizeFromRatio` 换算，长边 1024 基线）；**显示标题 `collections`**（en "Collections" / zh "合集"，与 Recent 区标题同款样式，同时把图片墙与上方 prompt 输入区在视觉上隔开）；加载失败（网络/非 2xx/非数组）回退空数组，显示 `noExamples` 空态（标题仍显示）。
@@ -177,6 +199,11 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 取色器 = 可拖动的饱和度–明度平面 + 色相条 + R/G/B 数字输入 + hex 输入（失焦/回车提交）+ 18 个预设色。
 - popover + 透明遮罩通过 `createPortal` 渲染到 `document.body`（`position:fixed` 必须在真实视口坐标系），并做水平/垂直视口钳制，保证不出屏；点外部关闭。
 - `handlePaletteChange` 同时更新 UI 状态并**写回** `refinedData.style_description.color_palette`（保证生成/保存用的是用户改后的调色板）。
+
+### 背景编辑（BackgroundEditor）
+- 元数据栏下方的 background 展示（`compositional_deconstruction.background` 的标签 + 原文，`background` 为空时整块不渲染）是**可点击的**（testID `edit-background`）→ 弹出「Edit background」编辑对话框（`BackgroundEditor` 组件，标题 key `editBackground`；testID `edit-background-dialog` / `background-input` / `background-save` / `background-cancel`）。
+- 对话框 = 与元素编辑同款的多行输入框（预填当前 background、聚焦全选），内容为空/纯空白时 **Save 禁用**；Save → `onSave(trim 后文本)`，design.tsx 里 `history.recordAction()` + 写回 `refinedData.compositional_deconstruction.background`（撤销栈一步，Undo 恢复旧文本；Save 设计时随 prompt 持久化）；点遮罩 / Cancel 关闭、不改数据。
+- 对话框 backdrop `createPortal` 到 `document.body`（组件位于 canvas 区子树内，其 stacking context 会把 fixed 遮罩压在 Toolbar 等兄弟节点下，点遮罩关不掉——同调色盘 popover 的 portal 机制）。
 
 ### 画布
 - **Show grid / Show elements 复选框**：画布区右上角固定两个小复选框（默认都勾选）。"Show elements"：取消勾选时所有 prompt 元素框（及悬停 tooltip）隐藏，勾选恢复；隐藏只是 `display:none`，不改动数据，且不会显示 "Canvas Area" 占位（占位仅在没有任何元素时出现）；创建工具在隐藏状态下仍可正常拖出新元素（新建元素属于 prompt 元素，同样受开关控制显隐）。"Show grid"：取消勾选时网格线隐藏，**且网格吸附关闭**（拖动/缩放/创建不再吸附，按自由坐标移动）。
@@ -263,8 +290,8 @@ Save/Generate 行中 Download Image 右侧的按钮（12px 间距），点击弹
 
 ### PromptRefiner.ts
 两个 OpenAI 兼容 chat/completions 调用（共用内部 `chatCompletion`；端点/凭据/模型名在调用时从**当前激活的 provider profile** 读取，失败时把状态码+响应体抛成错误）：
-- `refine(system_prompt, prompt, aspectRatio)`：用户消息 = `TARGET IMAGE ASPECT RATIO: {ratio} (width:height).\nUser idea: {prompt}`。
-- `resolveContradictionInBBox(system_prompt, prompt)`：用户消息就是 JSON caption 原文（不加包装）。
+- `refine(system_prompt, prompt, aspectRatio, images?)`：用户消息文本 = `TARGET IMAGE ASPECT RATIO: {ratio} (width:height).\nUser idea: {prompt}`；`images`（可选，首页拖入的参考图 base64 data URI 数组）非空时用户消息转为**多模态**（vLLM "image inputs" 格式）：OpenAI 兼容方言的 `content` 为数组 = 一个 `{type:'text', text}` 部分 + 每张图一个 `{type:'image_url', image_url:{url}}`（data URI 原样）；**Ollama 方言**保持字符串 content、图片以**裸 base64**（剥掉 data URI 前缀）放兄弟字段 `images: [...]`。无图时 content 保持纯字符串（非视觉后端兼容）。
+- `resolveContradictionInBBox(system_prompt, prompt)`：用户消息就是 JSON caption 原文（不加包装，不带图）。
 - 返回 `choices[0].message.content`（字符串），由调用方解析/防御。
 - 请求体**不发送任何思考（reasoning）开关字段**——所有 LLM 后端都保持自身默认的思考模式启用。
 - **Ollama 走原生 `/api/chat` 方言**（docs.ollama.com/api/chat，非 OpenAI 兼容）：请求体 `{ model, messages, stream: false, options: { temperature } }`（无顶层 temperature、无 `think` 字段）；响应取 `data.message.content`（而非 `choices[0].message.content`）。
@@ -310,12 +337,14 @@ localStorage（key `drawboard.designs`）的 `loadDesigns`（倒序、解析失�
 ## 测试
 
 - `npm test`（jest + jest-expo preset，`src/**` 下 `*.spec.ts`）。
-- `PromptRefiner.spec.ts`：mock `fetch` 与 settings 模块，验证 refine / resolveContradictionInBBox 的请求体（system prompt、caption 原文）、透传返回、错误状态与非预期结构的抛错。
+- `PromptRefiner.spec.ts`：mock `fetch` 与 settings 模块，验证 refine / resolveContradictionInBBox 的请求体（system prompt、caption 原文）、透传返回、错误状态与非预期结构的抛错；refine 多模态：带参考图时 content 为数组（text 部分在前 + 每图一个 image_url data URI 部分）、无图时保持纯字符串、Ollama 方言图片走兄弟字段 `images`（裸 base64）。
+- `imageFile.spec.ts`：纯函数单测——File → data URI（mime 取自 `file.type`、缺省回退 image/png、跨 0x8000 分块的字节级 round-trip）。
 - `settings.spec.ts`：纯函数单测——厂商/自建后端端点解析、自建默认地址、官方/本地图像 URL、active profile 解析、各项缺失判定（LLM key 仅自建后端可空、图像 key 仅 Custom 可空）、per-provider profile 互不干扰、无 localStorage 时的默认值。
 - `IdeogramPrompt.spec.ts`：纯函数单测——photo/art_style 互斥裁决、缺省补全、key 顺序、调色板大写/过滤/截断 16、入参不可变。
 - `designStore.spec.ts`：纯函数单测——`markNavigationFromHome`/`cameFromHome` 的 sessionStorage 标志（默认无、置位后保持、sessionStorage 缺失时安全返回）；`rawPrompt` 在 handoff 与已存设计中的持久化（含旧格式缺省、upsert 保留）。
 - `imageDownload.spec.ts`：纯函数单测（stub fetch/document/URL object-URL）——成功时以正确文件名经 `<a download>` 点击触发下载；fetch 失败时抛错且不动 DOM。
+- `publicAsset.spec.ts`：纯函数单测——`process.env.EXPO_BASE_URL` 未设时路径原样返回、设 `/DrawBoard` 时加前缀（babel 在 `NODE_ENV=test` 跳过内联，jest 读到真实 Node 环境，用例内设置/删除变量并恢复）。
 - `imageStore.spec.ts`：纯函数单测（`fake-indexeddb` 内存 IDB，每测试新 factory + `jest.resetModules` 隔离模块级单例；stub fetch 的 `arrayBuffer`，注意 Node Buffer 池——须 `new Uint8Array(Buffer)` 拷出）——`newImageId` 格式/唯一、显式稳定 id 存储（check-then-store 调用方）、成功存 data URI 后按 id 查回、fetch 失败/非 2xx/IDB 不可用三路径均返回 null（无 URL 回退）、URL 样式值（https/data/根相对路径 `/…`）不再透传 → null、未命中 id → null。
 - `exampleCollection.spec.ts`：纯函数单测（stub fetch + `fake-indexeddb`）——`loadExampleCollection` 抓图持久化进 IDB（稳定 id `img-<文件名>`）、已在库不重复抓取、非法条目过滤、单张图失败 `imageId=null` 不影响其余、非 2xx/非数组/网络失败回退 `[]` 不抛错；`sizeFromRatio` 各比例换算与非法回退方形；`exampleToDesign` 的 id 取自 url 文件名、`images=[imageId]`（持久化失败 → `[]` 无 tile）、`rawPrompt`、size 随 `aspect_ratio`、无文件名回退 `example-<index>`。
 - `i18n.spec.ts`：纯函数单测（内存 storage 挂到 `window.localStorage`）——默认 en-US、合法/非法存储值回退、`persistLocale` 写回、题目要求的全部英中映射、`{n}`/`{items}` 占位替换、未知 key 透传、双语表 key 对齐且无空值。
-- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言；首页断言含侧栏导航/墙标题/空态、prompt 占位符、圆形开始按钮 aria-label）；首页示例墙专项为 `scripts/e2e_example_wall.cjs`（读磁盘 example.json 驱动断言：Home 默认墙=示例集 tile 数=文件长度且各渲染示例图（IDB 解析出的 data URI，非打包文件 URL）、标题 "Collections"（"Recent Designs" 仅侧边栏出现一次）；悬停叠加原始 prompt；点击 tile 开全新设计——标题=HLD/画布比例=示例 aspect_ratio/参考图/Generated(1)/元素框数/Show Prompt 双栏/返回复位）；图片墙专项为 `scripts/e2e_home_wall.cjs`（Home 模式标题 "Collections" 且墙=示例集；Recent 模式标题 "Recent Designs" 出现、masonry 仅含有图设计且 DOM 顺序最新在前、tile 宽高比跟随设计尺寸、悬停叠加 rawPrompt/无 rawPrompt 回退 HLD、点击进入设计、返回复位 Home、无设计时空态）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计经图片墙 tile 进入、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）；图片持久化专项为 `scripts/e2e_image_store.cjs`（IDB 设计打开显示、生成存 base64 随机 id（按生成 data URI 过滤——首页加载已把示例图持久化进同一 IDB）、Save 存 id 后 reload 仍显示、转换失败 → 无画布图 + `imageSaveFailed` 错误行 + 不进历史 + 无新增 IDB 记录 + 保存的设计无图、旧 URL ref 不渲染图且 URL 永不被 fetch、首页墙 IDB tile 出 data URI / 旧 URL tile 保留但空占位、下载文件名）；首页提交错误专项为 `scripts/e2e_start_design_error.cjs`（LLM 端点未设置正确时点击提交 → 输入条上方红色错误行 `refine-error`：连接拒绝显示 "Failed to fetch" 且**持久**超过 5 秒瞬态窗口、修正 localStorage 端点后再次提交即清除旧错并跳转 /design；HTTP 500 显示 "LLM API Error (500): …" 且恰 1 次 LLM 调用；空端点显示 "Missing settings: LLM endpoint" 且 0 次 LLM 请求；3 次全部返回非法 JSON 后显示 "…on every attempt" 且恰 3 次调用；全程无跳转、无 pageerror）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。另注意 RN-web 0.21 会把**静态** StyleSheet 编译为 CSS 类（inline `style` 属性为空），e2e 断言样式须用 testID + 计算样式或动态 inline 值。
+- UI 布局类改动用 Playwright 对着运行中的 `expo start --web`（默认 8081 端口）做 e2e 验证（截图 + 几何断言）；i18n 专项为 `scripts/e2e_i18n.cjs`（en-US 默认 → 切 zh-CN 全页中文 → 刷新持久化 → 切回 en-US，含元素 desc/text 不翻译断言；首页断言含侧栏导航/墙标题/空态、prompt 占位符、圆形开始按钮 aria-label）；首页示例墙专项为 `scripts/e2e_example_wall.cjs`（读磁盘 example.json 驱动断言：Home 默认墙=示例集 tile 数=文件长度且各渲染示例图（IDB 解析出的 data URI，非打包文件 URL）、标题 "Collections"（"Recent Designs" 仅侧边栏出现一次）；悬停叠加原始 prompt；点击 tile 开全新设计——标题=HLD/画布比例=示例 aspect_ratio/参考图/Generated(1)/元素框数/Show Prompt 双栏/返回复位）；图片墙专项为 `scripts/e2e_home_wall.cjs`（Home 模式标题 "Collections" 且墙=示例集；Recent 模式标题 "Recent Designs" 出现、masonry 仅含有图设计且 DOM 顺序最新在前、tile 宽高比跟随设计尺寸、悬停叠加 rawPrompt/无 rawPrompt 回退 HLD、点击进入设计、返回复位 Home、无设计时空态）；显示 Prompt 专项为 `scripts/e2e_show_prompt.cjs`（按钮位于 Download 右侧；带/不带 rawPrompt 的已存设计经图片墙 tile 进入、handoff 新设计的左右两栏内容、只读、X 关闭、无数据时禁用）；图片持久化专项为 `scripts/e2e_image_store.cjs`（IDB 设计打开显示、生成存 base64 随机 id（按生成 data URI 过滤——首页加载已把示例图持久化进同一 IDB）、Save 存 id 后 reload 仍显示、转换失败 → 无画布图 + `imageSaveFailed` 错误行 + 不进历史 + 无新增 IDB 记录 + 保存的设计无图、旧 URL ref 不渲染图且 URL 永不被 fetch、首页墙 IDB tile 出 data URI / 旧 URL tile 保留但空占位、下载文件名）；首页提交错误专项为 `scripts/e2e_start_design_error.cjs`（LLM 端点未设置正确时点击提交 → 输入条上方红色错误行 `refine-error`：连接拒绝显示 "Failed to fetch" 且**持久**超过 5 秒瞬态窗口、修正 localStorage 端点后再次提交即清除旧错并跳转 /design；HTTP 500 显示 "LLM API Error (500): …" 且恰 1 次 LLM 调用；空端点显示 "Missing settings: LLM endpoint" 且 0 次 LLM 请求；3 次全部返回非法 JSON 后显示 "…on every attempt" 且恰 3 次调用；全程无跳转、无 pageerror）；prompt 参考图拖入专项为 `scripts/e2e_prompt_image.cjs`（合成 `DragEvent` 向 `prompt-dropzone` drop PNG → W/H 行与输入条之间出现 48×48 预览（渲染该 data URI）、再 drop 追加、`X` 删除后列表重排；非 image/* 文件被忽略；dragover 输入条边框变蓝、离开还原；带参考图提交 → 请求体 `messages[1].content` 为数组（text 部分 + image_url data URI 部分）并跳转 /design；无参考图 → content 为纯字符串；粘贴 S6：合成 `ClipboardEvent` 图片粘贴 → preventDefault + 预览、纯文本粘贴不消费且无预览、真实 Ctrl+V（grantPermissions + Clipboard API）文本插入照常、图片粘贴出预览——系统剪贴板会重编码 PNG 字节，故断言**解码像素**相同而非原始字节）；背景编辑专项为 `scripts/e2e_background_edit.cjs`（seed 带 background 的设计直开 /design?id：点 background 块弹预填对话框（标题 Edit background、点遮罩关闭且不改数据）；Save 写回且标签更新、Save 设计把新 background 持久化进 localStorage；撤销栈一步（Undo 恢复原文）；纯空白草稿 Save 禁用（aria-disabled/pointer-events）、Cancel 不改原文）；首页输入多行专项为 `scripts/e2e_multiline_input.cjs`（输入框为 textarea、Enter 换行、单行条高 56px、3 行展开 ~83px、40 行封顶 200px 且内部可滚（scrollHeight>clientHeight）、清空缩回 56px）；GitHub Pages 部署专项为 `scripts/e2e_github_pages.cjs`（`EXPO_BASE_URL=/DrawBoard` 真实导出——需 8081 空闲——+ bootstrap 注入 + 进程内 GH-Pages 模拟服务器 :8082（dist 挂 `/DrawBoard/`、缺失路径 status 404 回 404.html）：导出为 SPA 形态（index.html 在、无 per-route SSG 文件——`web.output: "single"`，`"static"` 会让深链 hydration mismatch #418 白屏）、首页全部 script src 带 base 前缀、示例墙全量出图（带前缀的 example.json/png fetch 在真实导出中生效）、深链 `/DrawBoard/design?id=…` 走 404 重写链后 URL 还原且设计页打开（标题=HLD、元素渲染）、未知路径 404→URL 还原无 pageerror、dist/404.html `pathSegmentsToKeep = 1` 与 .nojekyll 齐备、注入幂等）。注意 `page.addInitScript` 在页面 JS 上下文执行：函数体引用 e2e 脚本模块级变量会 ReferenceError，且只接受**单个** arg——handoff 种子须把 payload 作为单一对象参数传入。`drawboard.designs` 种子必须是**数组**（`JSON.stringify([design])`）——store 的 `loadDesigns` 对非数组值返回空数组，种子写成裸对象时设计页查不到数据、只渲染 "Canvas Area" 占位（无报错，易误判为路由问题）。另注意 RN-web 0.21 会把**静态** StyleSheet 编译为 CSS 类（inline `style` 属性为空），e2e 断言样式须用 testID + 计算样式或动态 inline 值。

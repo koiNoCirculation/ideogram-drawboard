@@ -5,6 +5,7 @@ import { resolveContradictionInBBox } from '../services/PromptRefiner';
 import { downloadImage } from '../services/imageDownload';
 import { resolveImageRef, saveGeneratedImage } from '../services/imageStore';
 import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
+import { getPublicAssetUrl } from '../services/publicAsset';
 import { RefinedPrompt, isEmptyElement } from '../types';
 import { useImageUris } from '../useImageUris';
 import { withVisibleElementsOnly } from './canvas';
@@ -36,7 +37,7 @@ function parseRewrittenCaption(content: string, t: T): RefinedPrompt {
 // Load the bbox-rewrite system prompt from the public assets directory.
 async function loadRewriteSystemPrompt(t: T): Promise<string> {
     try {
-        const response = await fetch('/system_prompt_rewrite_adapt_bbox.txt');
+        const response = await fetch(getPublicAssetUrl('/system_prompt_rewrite_adapt_bbox.txt'));
         if (!response.ok) {
             throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
         }

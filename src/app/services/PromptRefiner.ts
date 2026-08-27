@@ -10,7 +10,16 @@ import { getActiveLlmProfile, getLlmUrl, loadSettings } from './settings';
  * @param user_prompt - The user message
  * @returns A promise that resolves to the LLM's content response.
  */
-async function chatCompletion(system_prompt: string, user_prompt: string): Promise<string> {
+// One chat message. `content` is a plain string, or (OpenAI-compatible
+// multimodal) an array of text / image_url parts; `images` is Ollama's
+// sibling raw-base64 payload list.
+type ChatMessage = {
+  role: string;
+  content: string | Array<Record<string, unknown>>;
+  images?: string[];
+};
+
+async function chatCompletion(system_prompt: string, user_prompt: string, images?: string[]): Promise<string> {
   try {
     const settings = loadSettings();
     // The active provider's profile (endpoint/credential/model are kept
@@ -26,15 +35,35 @@ async function chatCompletion(system_prompt: string, user_prompt: string): Promi
       else headers['Authorization'] = `Bearer ${key}`;
     }
 
-    const messages = [
+    const isOllama = settings.llmProvider === 'Ollama';
+    const hasImages = !!images && images.length > 0;
+    // Reference images (base64 data URIs). OpenAI-compatible backends (the
+    // vLLM "image inputs" format) take a content ARRAY: one text part plus
+    // one image_url part per image. Ollama's native /api/chat keeps a string
+    // content and carries the images separately as RAW base64 (no data-URI
+    // prefix) in a sibling `images` array. Without images the user message
+    // stays a plain string (non-vision backends).
+    const userMessage: ChatMessage = isOllama
+      ? hasImages
+        ? { role: 'user', content: user_prompt, images: images.map((u) => u.split(',')[1] ?? u) }
+        : { role: 'user', content: user_prompt }
+      : hasImages
+        ? {
+          role: 'user',
+          content: [
+            { type: 'text', text: user_prompt },
+            ...images.map((u) => ({ type: 'image_url', image_url: { url: u } })),
+          ],
+        }
+        : { role: 'user', content: user_prompt };
+    const messages: ChatMessage[] = [
       { role: 'system', content: system_prompt },
-      { role: 'user', content: user_prompt },
+      userMessage,
     ];
     // Ollama speaks its native /api/chat dialect (docs.ollama.com/api/chat)
     // instead of the OpenAI-compatible one: non-streaming, sampling controls
     // under `options`. No reasoning fields are sent — every backend runs with
     // its own thinking/reasoning mode enabled.
-    const isOllama = settings.llmProvider === 'Ollama';
     const body = isOllama
       ? {
           model: profile.name.trim(),
@@ -81,11 +110,14 @@ async function chatCompletion(system_prompt: string, user_prompt: string): Promi
  * @param system_prompt - The system prompt
  * @param prompt - The user's natural language idea for the image.
  * @param aspectRatio - The target aspect ratio in W:H format (e.g. "16:9").
+ * @param images - Optional reference images (base64 data URIs) the LLM should
+ *   take into account when refining the idea (multimodal input, see the
+ *   vLLM "image inputs" docs).
  * @returns A promise that resolves to the LLM's content response.
  */
-export async function refine(system_prompt: string, prompt: string, aspectRatio: string): Promise<string> {
+export async function refine(system_prompt: string, prompt: string, aspectRatio: string, images?: string[]): Promise<string> {
   const userPrompt = `TARGET IMAGE ASPECT RATIO: ${aspectRatio} (width:height).\nUser idea: ${prompt}`;
-  return chatCompletion(system_prompt, userPrompt);
+  return chatCompletion(system_prompt, userPrompt, images);
 }
 
 /**

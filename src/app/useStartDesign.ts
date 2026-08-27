@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
 import { refine } from './services/PromptRefiner';
 import { getMissingSettings, loadSettings } from './services/settings';
+import { getPublicAssetUrl } from './services/publicAsset';
 
 // The LLM (temperature 1.0) occasionally answers with malformed JSON; how many
 // refine attempts are made before giving up with an Alert.
@@ -24,11 +25,14 @@ const REFINE_MAX_ATTEMPTS = 3;
  *
  * Returns the loading flag, the current refine error and the button handler.
  */
-export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
+export const useStartDesign = ({ prompt, selectedRatio, width, height, images }: {
     prompt: string;
     selectedRatio: string;
     width: string;
     height: string;
+    // Reference images dropped onto the prompt bar (base64 data URIs);
+    // inlined into the refine request as multimodal content.
+    images: string[];
 }) => {
     const router = useRouter();
     const { t } = useI18n();
@@ -108,13 +112,14 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
         }
     };
 
-    // Refine the prompt. The LLM can answer with malformed JSON (temperature
-    // 1.0): parse each attempt, and on failure show an error line (transient
-    // while retries remain, persistent after the final one) and retry,
-    // giving up with an error after REFINE_MAX_ATTEMPTS.
+    // Refine the prompt (with the dropped reference images, if any). The LLM
+    // can answer with malformed JSON (temperature 1.0): parse each attempt,
+    // and on failure show an error line (transient while retries remain,
+    // persistent after the final one) and retry, giving up with an error
+    // after REFINE_MAX_ATTEMPTS.
     const refineWithRetry = async (systemPrompt: string, ratioString: string): Promise<string> => {
         for (let attempt = 1; attempt <= REFINE_MAX_ATTEMPTS; attempt++) {
-            const raw = await refine(systemPrompt, prompt, ratioString);
+            const raw = await refine(systemPrompt, prompt, ratioString, images);
             try {
                 JSON.parse(raw);
                 return raw;
@@ -139,7 +144,7 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height }: {
 
     const loadSystemPrompt = async (): Promise<string> => {
         try {
-            const response = await fetch("/system_prompt.txt");
+            const response = await fetch(getPublicAssetUrl('/system_prompt.txt'));
             if (!response.ok) {
                 throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
             }

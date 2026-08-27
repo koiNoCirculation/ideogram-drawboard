@@ -91,7 +91,7 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
         await page.waitForTimeout(400);
         ok((await errorLine(page).count()) === 0, 'no error line before the first attempt');
 
-        await page.locator('input[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
 
         await page.waitForSelector('[data-testid="refine-error"]', { timeout: 15000 });
@@ -140,7 +140,7 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(400);
 
-        await page.locator('input[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
 
         await page.waitForSelector('[data-testid="refine-error"]', { timeout: 15000 });
@@ -164,7 +164,7 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(400);
 
-        await page.locator('input[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
 
         await page.waitForSelector('[data-testid="refine-error"]', { timeout: 15000 });
@@ -194,7 +194,7 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(400);
 
-        await page.locator('input[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
 
         await page.waitForSelector('[data-testid="refine-error"]', { timeout: 15000 });

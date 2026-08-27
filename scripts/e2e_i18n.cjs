@@ -86,7 +86,7 @@ async function openDesign(page) {
         ok(await page.getByText('Width (W)').count() === 1, 'W label English');
         ok(await page.getByText('Height (H)').count() === 1, 'H label English');
         ok(await page.getByText('custom', { exact: true }).count() === 1, 'custom ratio English');
-        ok(await page.locator('input[data-testid="prompt-input"]').getAttribute('placeholder') === 'Generate new or upload & edit...',
+        ok(await page.locator('[data-testid="prompt-input"]').getAttribute('placeholder') === 'Generate new or upload & edit...',
             'prompt placeholder English');
         ok((await page.locator('[data-testid="start-design-button"]').getAttribute('aria-label')) === 'Start Design',
             'start button label English (aria-label)');
@@ -212,7 +212,7 @@ async function openDesign(page) {
         ok(await page.getByText('宽度', { exact: true }).count() === 1, 'W label Chinese');
         ok(await page.getByText('高度', { exact: true }).count() === 1, 'H label Chinese');
         ok(await page.getByText('自定义', { exact: true }).count() === 1, 'custom ratio Chinese');
-        ok(await page.locator('input[data-testid="prompt-input"]').getAttribute('placeholder') === '生成新图片，或上传并编辑…',
+        ok(await page.locator('[data-testid="prompt-input"]').getAttribute('placeholder') === '生成新图片，或上传并编辑…',
             'prompt placeholder Chinese');
         ok((await page.locator('[data-testid="start-design-button"]').getAttribute('aria-label')) === '开始设计',
             'start button label Chinese (aria-label)');

@@ -1,6 +1,7 @@
 import { RefinedPrompt } from '../types';
 import { Design } from './designStore';
 import { resolveImageRef, saveGeneratedImage } from './imageStore';
+import { getPublicAssetUrl } from './publicAsset';
 
 /**
  * One entry from the static example collection
@@ -23,7 +24,7 @@ export interface ExampleEntry extends RawExampleEntry {
     imageId: string | null;
 }
 
-const EXAMPLE_COLLECTION_URL = '/example_collection/example.json';
+const EXAMPLE_COLLECTION_URL = getPublicAssetUrl('/example_collection/example.json');
 
 /**
  * Fetch the example collection and persist each example image into the
@@ -66,7 +67,10 @@ function exampleImageId(url: string, index: number): string {
 async function ensureImageId(entry: RawExampleEntry, index: number): Promise<ExampleEntry> {
     const id = exampleImageId(entry.url, index);
     if (await resolveImageRef(id)) return { ...entry, imageId: id };
-    const saved = await saveGeneratedImage(entry.url, id);
+    // Root-relative urls (the bundled pngs) need the deploy base prefix on
+    // subpath hosts; absolute http(s) urls are passed through untouched.
+    const fetchUrl = entry.url.startsWith('/') ? getPublicAssetUrl(entry.url) : entry.url;
+    const saved = await saveGeneratedImage(fetchUrl, id);
     return { ...entry, imageId: saved };
 }
 

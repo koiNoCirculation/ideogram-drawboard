@@ -1,0 +1,48 @@
+# Build the web export (subpath base path from the repo name) and publish it
+# to the gh-pages branch, which is the GitHub Pages source
+# (Settings → Pages → Deploy from a branch → gh-pages / (root)).
+# The app is a project page at https://<user>.github.io/<repo-name>/.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master, github-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # experiments.baseUrl comes from this variable (app.config.js): asset
+      # links in the exported HTML are prefixed with the repo subpath.
+      - name: Export web build (subpath base)
+        run: npx expo export --platform web
+        env:
+          EXPO_BASE_URL: "/${{ github.repository_name }}"
+
+      # spa-github-pages redirect bootstrap (deep links → 404.html → this
+      # script rewrites the path back before the app bundle loads).
+      - run: node scripts/inject_github_pages_bootstrap.cjs dist
+
+      - name: Publish dist/ to the gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          clean: true

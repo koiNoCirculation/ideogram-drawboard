@@ -1,8 +1,10 @@
 import { Stack, useRouter } from 'expo-router';
-import { ArrowUp, Home as HomeIcon, Images, Settings as SettingsIcon } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowUp, Home as HomeIcon, Images, Settings as SettingsIcon, X } from 'lucide-react-native';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
+    Image,
+    Pressable,
     ScrollView,
     SafeAreaView,
     StyleSheet,
@@ -19,8 +21,13 @@ import { useStartDesign } from './useStartDesign';
 import { useImageUris } from './useImageUris';
 import { Design, loadDesigns, markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
 import { exampleToDesign, loadExampleCollection } from './services/exampleCollection';
+import { fileToDataUri } from './services/imageFile';
 
 const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
+// The prompt bar's capsule height: 56px for a single line, growing with
+// wrapped multiline text up to 200px (longer text scrolls inside).
+const MIN_INPUT_BAR_HEIGHT = 56;
+const MAX_INPUT_BAR_HEIGHT = 200;
 
 // Which home section is active: 'home' leaves the image wall empty (title
 // hidden), 'recent' shows the masonry of saved designs' latest images.
@@ -43,14 +50,101 @@ export default function IndexScreen() {
     // Settings dialog (opened from the gear icon, top-right of the page).
     const [showSettings, setShowSettings] = useState(false);
     const [activeSection, setActiveSection] = useState<HomeSection>('home');
+    // Reference images added to the prompt bar (dropped or pasted, base64
+    // data URIs); sent to the LLM as multimodal content. Home-only state —
+    // cleared on
+    // navigation. `dragging` highlights the drop zone while a file hovers it.
+    const [refImages, setRefImages] = useState<string[]>([]);
+    const [dragging, setDragging] = useState(false);
+    // Prompt bar height: follows the (multiline) text content, clamped to
+    // [MIN_INPUT_BAR_HEIGHT, MAX_INPUT_BAR_HEIGHT].
+    const [inputBarHeight, setInputBarHeight] = useState(MIN_INPUT_BAR_HEIGHT);
 
     // Start Design flow (settings validation → refine with retry → handoff →
     // navigate); also owns the red LLM error line (transient "retrying"
     // notices, persistent final failures). Triggered by the circular arrow
     // button inside the prompt bar.
     const { isLoading, refineError, handleStartDesigning } = useStartDesign({
-        prompt, selectedRatio, width, height,
+        prompt, selectedRatio, width, height, images: refImages,
     });
+
+    // Reference images into the prompt bar, via drag-and-drop OR clipboard
+    // paste (Ctrl+V). RN has no native DnD, so attach DOM listeners to the
+    // bar's node (same testID-lookup pattern as the design page's canvas
+    // wheel zoom): dragover/drop are prevented so the browser lets the drop
+    // land; pastes carrying image/* clipboard items (e.g. a screenshot) are
+    // intercepted the same way. Every image file becomes a base64 data URI
+    // (preview row + multimodal refine input); text-only pastes fall through
+    // to the input's default behavior.
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const node = document.querySelector('[data-testid="prompt-dropzone"]') as HTMLElement | null;
+        if (!node) return;
+        const pushImageFiles = (files: File[]) => {
+            files.forEach((file) => {
+                fileToDataUri(file)
+                    .then((uri) => setRefImages((prev) => [...prev, uri]))
+                    .catch((err) => console.error('[refImage Error]:', err));
+            });
+        };
+        const onDragOver = (e: DragEvent) => {
+            e.preventDefault();
+            setDragging(true);
+        };
+        const onDragLeave = (e: DragEvent) => {
+            e.preventDefault();
+            // Moving onto a child (input, button) also fires dragleave;
+            // only clear when actually leaving the bar.
+            if (e.relatedTarget && node.contains(e.relatedTarget as Node)) return;
+            setDragging(false);
+        };
+        const onDrop = (e: DragEvent) => {
+            e.preventDefault();
+            setDragging(false);
+            const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
+            pushImageFiles(files);
+        };
+        const onPaste = (e: ClipboardEvent) => {
+            const files = Array.from(e.clipboardData?.items ?? [])
+                .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+                .map((it) => it.getAsFile())
+                .filter((f): f is File => f !== null);
+            if (files.length === 0) return;
+            // Consume the paste so the textarea doesn't also insert it.
+            e.preventDefault();
+            pushImageFiles(files);
+        };
+        node.addEventListener('dragover', onDragOver);
+        node.addEventListener('dragleave', onDragLeave);
+        node.addEventListener('drop', onDrop);
+        node.addEventListener('paste', onPaste);
+        return () => {
+            node.removeEventListener('dragover', onDragOver);
+            node.removeEventListener('dragleave', onDragLeave);
+            node.removeEventListener('drop', onDrop);
+            node.removeEventListener('paste', onPaste);
+        };
+    }, []);
+
+    // Auto-grow the prompt bar to fit the (multiline) text. The input's own
+    // scrollHeight tracks its box (it is flex:1 inside the bar, and a
+    // textarea's auto height comes from its rows attribute, not the text),
+    // so measure the real content height by collapsing the box to 1px first —
+    // a taller bar would otherwise feed back into the measurement.
+    useLayoutEffect(() => {
+        if (typeof document === 'undefined') return;
+        const ta = document.querySelector('[data-testid="prompt-input"]') as HTMLTextAreaElement | null;
+        if (!ta) return;
+        const id = requestAnimationFrame(() => {
+            const prev = ta.style.height;
+            ta.style.height = '1px';
+            const content = ta.scrollHeight;
+            ta.style.height = prev;
+            setInputBarHeight(Math.min(MAX_INPUT_BAR_HEIGHT,
+                Math.max(MIN_INPUT_BAR_HEIGHT, content + 12)));
+        });
+        return () => cancelAnimationFrame(id);
+    }, [prompt]);
 
     useEffect(() => {
         setDesigns(loadDesigns());
@@ -228,6 +322,27 @@ export default function IndexScreen() {
                                 </View>
                             </View>
 
+                            {/* Reference-image previews (dropped onto /
+                                pasted into the prompt bar): below W/H,
+                                above the input bar; each is removable. */}
+                            {refImages.length > 0 && (
+                                <View style={styles.previewRow}>
+                                    {refImages.map((uri, i) => (
+                                        <View key={i} style={styles.previewItem} testID={`image-preview-${i}`}>
+                                            <Image source={{ uri }} style={styles.previewImg} />
+                                            <Pressable
+                                                style={styles.previewRemove}
+                                                onPress={() => setRefImages((prev) => prev.filter((_, j) => j !== i))}
+                                                accessibilityLabel={t('removeImage')}
+                                                testID={`image-preview-remove-${i}`}
+                                            >
+                                                <X size={10} color="#FFFFFF" />
+                                            </Pressable>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+
                             {/* Red LLM error line: "retrying" auto-dismisses
                                 after 5s, final failures (bad endpoint, HTTP
                                 error, all JSON retries failed) persist until
@@ -238,14 +353,20 @@ export default function IndexScreen() {
                                 </View>
                             )}
 
-                            {/* Prompt bar: rounded capsule input + circular start button */}
-                            <View style={styles.inputBar}>
+                            {/* Prompt bar: rounded capsule input + circular start
+                                button; also the drop zone for reference images
+                                (blue border while a file is dragged over it). */}
+                            <View
+                                style={[styles.inputBar, dragging && styles.inputBarDragging, { height: inputBarHeight }]}
+                                testID="prompt-dropzone"
+                            >
                                 <TextInput
-                                    style={styles.promptInput}
+                                    style={[styles.promptInput, inputBarHeight > MIN_INPUT_BAR_HEIGHT && { textAlignVertical: 'top', paddingTop: 8 }]}
                                     placeholder={t('promptPlaceholder')}
                                     placeholderTextColor="#999999"
                                     value={prompt}
                                     onChangeText={setPrompt}
+                                    multiline
                                     testID="prompt-input"
                                 />
                                 <TouchableOpacity
@@ -416,6 +537,44 @@ const styles = StyleSheet.create({
         fontSize: 16,
         paddingVertical: 4,
     },
+    // Reference-image preview row (below W/H, above the prompt bar).
+    previewRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        columnGap: 8,
+        rowGap: 8,
+        marginBottom: 12,
+    },
+    previewItem: {
+        width: 48,
+        height: 48,
+        borderRadius: 6,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: '#DDDDDD',
+        backgroundColor: '#F5F5F5',
+    },
+    previewImg: {
+        width: 48,
+        height: 48,
+    },
+    previewRemove: {
+        position: 'absolute',
+        top: 2,
+        right: 2,
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    // Blue border while a file is dragged over the prompt bar (color only —
+    // keeping the 1px width so the capsule doesn't shift).
+    inputBarDragging: {
+        borderColor: '#007AFF',
+    },
     // Rounded capsule prompt bar (Ideogram-style) with the circular start
     // button embedded on the right.
     inputBar: {
@@ -434,6 +593,9 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#111111',
         paddingVertical: 0,
+        // Multiline: once the bar hits MAX_INPUT_BAR_HEIGHT, longer text
+        // scrolls inside instead of growing the capsule further.
+        overflow: 'scroll',
     },
     sendButton: {
         width: 40,

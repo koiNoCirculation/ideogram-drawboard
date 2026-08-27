@@ -70,6 +70,8 @@ describe('translate', () => {
         expect(translate('en-US', 'widthLabel')).toBe('Width (W)');
         expect(translate('en-US', 'heightLabel')).toBe('Height (H)');
         expect(translate('en-US', 'startDesign')).toBe('Start Design');
+        expect(translate('en-US', 'removeImage')).toBe('Remove image');
+        expect(translate('en-US', 'editBackground')).toBe('Edit background');
         expect(translate('en-US', 'aesthetics')).toBe('Aesthetics');
         expect(translate('en-US', 'lighting')).toBe('Lighting');
         expect(translate('en-US', 'photo')).toBe('Photo');
@@ -98,6 +100,8 @@ describe('translate', () => {
         expect(translate('zh-CN', 'widthLabel')).toBe('宽度');
         expect(translate('zh-CN', 'heightLabel')).toBe('高度');
         expect(translate('zh-CN', 'startDesign')).toBe('开始设计');
+        expect(translate('zh-CN', 'removeImage')).toBe('移除图片');
+        expect(translate('zh-CN', 'editBackground')).toBe('编辑背景');
         expect(translate('zh-CN', 'aesthetics')).toBe('美学关键字');
         expect(translate('zh-CN', 'lighting')).toBe('光照关键字');
         expect(translate('zh-CN', 'photo')).toBe('照片关键字');

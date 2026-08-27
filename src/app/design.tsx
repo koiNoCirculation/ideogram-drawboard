@@ -2,26 +2,27 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { useI18n } from '../i18n';
+import { BackgroundEditor } from './components/design/BackgroundEditor';
 import { CanvasStage } from './components/design/CanvasStage';
 import { ContextMenu } from './components/design/ContextMenu';
-import { HeaderBackButton } from './components/design/HeaderBackButton';
 import { EditDialog } from './components/design/EditDialog';
-import { PromptDialog } from './components/design/PromptDialog';
+import { HeaderBackButton } from './components/design/HeaderBackButton';
 import { MetadataBar } from './components/design/MetadataBar';
+import { PromptDialog } from './components/design/PromptDialog';
 import { Toolbar } from './components/design/Toolbar';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { SettingsDialog } from './components/SettingsDialog';
-import { styles } from './design/designStyles';
-import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, CANVAS_WHEEL_ZOOM_FACTOR, gridCellUnits, RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from './design/constants';
 import { snapToGridValue } from './design/canvas';
-import { getDesign, getDesignHandoff, newDesignId } from './services/designStore';
-import { useHistory } from './design/useHistory';
-import { useCanvasInteraction } from './design/useCanvasInteraction';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, CANVAS_WHEEL_ZOOM_FACTOR, gridCellUnits, RULER_LEFT_WIDTH, RULER_TOP_HEIGHT } from './design/constants';
+import { styles } from './design/designStyles';
 import type { ElementTool } from './design/useCanvasInteraction';
+import { useCanvasInteraction } from './design/useCanvasInteraction';
 import { useElementEditing } from './design/useElementEditing';
 import { useGeneration } from './design/useGeneration';
+import { useHistory } from './design/useHistory';
+import { getDesign, getDesignHandoff, newDesignId } from './services/designStore';
 import { RefinedPrompt } from './types';
-import { useI18n } from '../i18n';
 
 // Stack header config: a custom back button (see HeaderBackButton) in place
 // of the default one, which disappears after a refresh.
@@ -306,13 +307,14 @@ export default function DesignScreen() {
                         onPaletteChange={handlePaletteChange}
                     />
 
-                    {/* Background Info */}
-                    {refinedData?.compositional_deconstruction?.background && (
-                        <View style={styles.backgroundContainer}>
-                            <Text style={styles.groupLabel}>{t('background')}</Text>
-                            <Text style={styles.backgroundText}>{refinedData.compositional_deconstruction.background}</Text>
-                        </View>
-                    )}
+                    {/* Background: click to edit the scene-shell description. */}
+                    <BackgroundEditor
+                        background={refinedData?.compositional_deconstruction?.background}
+                        onSave={(value) => { history.recordAction(); setRefinedData((prev) => prev ? {
+                            ...prev,
+                            compositional_deconstruction: { ...prev.compositional_deconstruction, background: value },
+                        } : prev); }}
+                    />
 
                     <CanvasStage
                         showGrid={showGrid}

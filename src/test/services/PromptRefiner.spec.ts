@@ -220,6 +220,65 @@ test('refine: sends no reasoning/thinking fields (thinking stays enabled)', asyn
     fetchSpy.mockRestore();
 });
 
+test('refine: with reference images, sends a multimodal content array (text + image_url data URIs)', async () => {
+    const ok = {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+        text: async () => 'success',
+    };
+    const img1 = `data:image/png;base64,${Buffer.from('fake-png-bytes').toString('base64')}`;
+    const img2 = `data:image/jpeg;base64,${Buffer.from('jpg-bytes').toString('base64')}`;
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(ok as any);
+    await refine('system', 'an idea', '16:9', [img1, img2]);
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
+    // vLLM "image inputs" format: content is an array — the text part first,
+    // then one image_url part per reference image (data URIs verbatim).
+    const content = body.messages[1].content;
+    expect(Array.isArray(content)).toBe(true);
+    expect(content[0]).toEqual({
+        type: 'text',
+        text: 'TARGET IMAGE ASPECT RATIO: 16:9 (width:height).\nUser idea: an idea',
+    });
+    expect(content[1]).toEqual({ type: 'image_url', image_url: { url: img1 } });
+    expect(content[2]).toEqual({ type: 'image_url', image_url: { url: img2 } });
+    fetchSpy.mockRestore();
+});
+
+test('refine: without reference images, the user message stays a plain string', async () => {
+    const ok = {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+        text: async () => 'success',
+    };
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(ok as any);
+    await refine('system', 'an idea', '16:9');
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
+    expect(typeof body.messages[1].content).toBe('string');
+    fetchSpy.mockRestore();
+});
+
+test('refine (Ollama): reference images ride as raw base64 in a sibling `images` array', async () => {
+    const okOllama = {
+        ok: true,
+        status: 200,
+        json: async () => ({ message: { role: 'assistant', content: '{}' } }),
+        text: async () => 'success',
+    };
+    const b64 = Buffer.from('raw-ollama-bytes').toString('base64');
+    mockSettings.llmProvider = 'Ollama';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(okOllama as any);
+    await refine('system', 'idea', '1:1', [`data:image/png;base64,${b64}`]);
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as { body: string }).body);
+    // Ollama's native /api/chat: string content + raw base64 (no data-URI
+    // prefix) in the sibling images array.
+    expect(body.messages[1].content).toBe('TARGET IMAGE ASPECT RATIO: 1:1 (width:height).\nUser idea: idea');
+    expect(body.messages[1].images).toEqual([b64]);
+    mockSettings.llmProvider = 'vLLM';
+    fetchSpy.mockRestore();
+});
+
 test('resolveContradictionInBBox: rejects on an unexpected response structure', async () => {
     const mockResponse = {
         ok: true,

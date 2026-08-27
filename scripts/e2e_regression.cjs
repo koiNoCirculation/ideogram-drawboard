@@ -317,7 +317,7 @@ const GREY = 'rgb(204, 204, 204)';
         ok(!page.url().includes('/design') && reqs.length === 0,
             'empty prompt blocks start (no navigation, no LLM request)');
 
-        await page.locator('input[data-testid="prompt-input"]').fill('hello world');
+        await page.locator('[data-testid="prompt-input"]').fill('hello world');
         await page.locator('[data-testid="start-design-button"]').click();
         await page.waitForTimeout(400);
         ok(!page.url().includes('/design') && reqs.length === 0,
@@ -331,7 +331,7 @@ const GREY = 'rgb(204, 204, 204)';
         const log = await mockApis(page, { llmContent: JSON.stringify(BASE_PROMPT) });
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(500);
-        await page.locator('input[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
         await page.waitForURL('**/design**', { timeout: 10000 });
         await page.waitForTimeout(700);
