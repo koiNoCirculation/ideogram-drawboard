@@ -6,7 +6,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master, github-pages]
+    branches: [github-pages]
   workflow_dispatch:
 
 permissions:
@@ -35,6 +35,18 @@ jobs:
         run: npx expo export --platform web
         env:
           EXPO_BASE_URL: "/${{ github.repository_name }}"
+
+      # Verify the exported HTML actually carries the subpath prefix on its
+      # asset links (experiments.baseUrl from EXPO_BASE_URL above). Without it
+      # the project page 404s on every /_expo/... asset and renders blank.
+      - name: Verify index.html asset links carry the repo base
+        run: |
+          BASE="/${{ github.repository_name }}"
+          grep -q "src=\"$BASE/_expo/" dist/index.html \
+            || { echo "::error::index.html has no $BASE-prefixed script src"; exit 1; }
+          grep -q 'src="/_expo/' dist/index.html \
+            && { echo "::error::index.html has unprefixed (root-relative) asset refs"; exit 1; }
+          echo "OK: asset links are under $BASE"
 
       # spa-github-pages redirect bootstrap (deep links → 404.html → this
       # script rewrites the path back before the app bundle loads).
