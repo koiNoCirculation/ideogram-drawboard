@@ -308,32 +308,6 @@ export const styles = StyleSheet.create({
         fontSize: 13,
         color: '#E53935',
     },
-    // Transient red floating toast (viewport top-center, below the Stack
-    // header) for download failures; auto-dismisses after 5s.
-    downloadErrorToast: {
-        position: 'fixed',
-        top: 76,
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        zIndex: 100,
-    },
-    downloadErrorToastBox: {
-        backgroundColor: '#E53935',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        shadowColor: '#000',
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 6,
-    },
-    downloadErrorText: {
-        color: '#FFFFFF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
     // Horizontal strip of generated-image thumbnails (view history).
     historyStrip: {
         alignSelf: 'stretch',

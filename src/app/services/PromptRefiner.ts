@@ -1,3 +1,4 @@
+import { HttpError } from './requestError';
 import { getActiveLlmProfile, getLlmUrl, loadSettings } from './settings';
 
 /**
@@ -84,7 +85,10 @@ async function chatCompletion(system_prompt: string, user_prompt: string, images
     });
     if (!response.ok) {
       const errorDetails = await response.text();
-      throw new Error(`LLM API Error (${response.status}): ${errorDetails}`);
+      // Typed with the status so the UI layer (requestError) can classify
+      // 401/403 vs 404 vs 5xx for the user; the raw details stay in the
+      // message for the console, never for the user.
+      throw new HttpError(`LLM API Error (${response.status}): ${errorDetails}`, response.status);
     }
 
     const data = await response.json();

@@ -11,6 +11,9 @@
  *    image on the canvas, the element boxes, the title (HLD), a one-image
  *    history, and the Show Prompt dialog (original prompt left / structured
  *    JSON right); back returns to the home page.
+ *  - a blocked example.json fetch floats the friendly "could not be loaded"
+ *    message (red float, testID error-float) and the wall falls back to its
+ *    empty state.
  * Assertions are driven by the on-disk example.json so they track the file.
  */
 const { chromium } = require('playwright');
@@ -129,6 +132,24 @@ const EX = EXAMPLES[0];
         ok(page.url() === BASE + '/', 'back returns to the home page');
         ok(await page.locator('[data-testid^="wall-tile-"]').count() === EXAMPLES.length,
             'home remounts showing the example wall again');
+    });
+
+    // ================= S4: blocked example.json -> float + empty wall =================
+    await section('S4 blocked example.json: friendly float + empty wall state', async () => {
+        const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+        const pErrors = [];
+        p.on('pageerror', (e) => pErrors.push(e.message));
+        await p.route('**/example_collection/example.json', (route) => route.abort());
+        await p.goto(BASE + '/', { waitUntil: 'networkidle' });
+        await p.waitForSelector('[data-testid="error-float"]', { timeout: 15000 });
+        const text = await p.locator('[data-testid="error-float"]').textContent();
+        ok(text.includes('example collection could not be loaded'), `float names the failed load ("${text}")`);
+        ok(text.includes('Settings') === false, 'collection float is not framed as a settings problem');
+        ok(await p.locator('[data-testid^="wall-tile-"]').count() === 0, 'wall shows no tiles when the collection fails');
+        ok(await p.getByText('No examples available', { exact: true }).count() === 1, 'wall shows its empty state');
+        ok(pErrors.length === 0, `no page errors (${pErrors[0] || 'none'})`);
+        await p.screenshot({ path: path.join(TEMP, 'shot_example_wall_load_failed.png') });
+        await p.close();
     });
 
     ok(pageErrors.length === 0, `no page errors (${pageErrors[0] || 'none'})`);

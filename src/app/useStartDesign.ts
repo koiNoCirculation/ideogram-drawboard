@@ -2,8 +2,15 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useI18n } from '../i18n';
+import { useErrorFloat } from './components/ErrorFloat';
 import { markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
 import { refine } from './services/PromptRefiner';
+import {
+    AssetLoadError,
+    HttpError,
+    classifyRequestError,
+    requestErrorMessage,
+} from './services/requestError';
 import { getMissingSettings, loadSettings } from './services/settings';
 import { getPublicAssetUrl } from './services/publicAsset';
 
@@ -16,14 +23,18 @@ const REFINE_MAX_ATTEMPTS = 3;
  * settings, refine with retries on malformed JSON, stash the refined prompt
  * in the navigation handoff and push /design?id=...
  *
- * Every LLM-side failure — missing settings, an unreachable/misconfigured
- * endpoint (fetch/HTTP error), or malformed JSON on every attempt — is
- * reported as a RED error line above the prompt bar: "retrying" notices are
- * transient (auto-dismiss after 5s), final errors persist until the next
- * submit attempt. (Alert.alert is a no-op on web, so the inline red line is
- * the only visible feedback.)
+ * Failures surface in two places:
+ * - RED error line above the prompt bar — non-request failures: missing
+ *   settings and malformed JSON on every attempt ("retrying" notices are
+ *   transient, auto-dismiss after 5s; final errors persist until the next
+ *   submit attempt).
+ * - red floating toast (auto-dismisses after 5s) — request failures: the
+ *   LLM endpoint unreachable/rejecting (network vs configuration wording,
+ *   via requestError.ts) and the bundled system-prompt asset failing to
+ *   load. (Alert.alert is a no-op on web, so neither is an Alert.)
  *
- * Returns the loading flag, the current refine error and the button handler.
+ * Returns the loading flag, the current refine error, the current float
+ * message and the button handler.
  */
 export const useStartDesign = ({ prompt, selectedRatio, width, height, images }: {
     prompt: string;
@@ -36,6 +47,8 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height, images }:
 }) => {
     const router = useRouter();
     const { t } = useI18n();
+    // Red floating toast for request/asset failures (auto-dismisses after 5s).
+    const { message: errorFloatMessage, show: showErrorFloat } = useErrorFloat();
     const [isLoading, setIsLoading] = useState(false);
     // Red error line above the prompt bar (null = hidden).
     const [refineError, setRefineError] = useState<string | null>(null);
@@ -103,10 +116,19 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height, images }:
             markNavigationFromHome();
             router.push({ pathname: '/design', params: { id } });
         } catch (error: any) {
-            // Misconfigured/unreachable endpoint, HTTP error or every JSON
-            // retry failed: keep the red error line visible until the next
-            // submit attempt (no auto-dismiss).
-            showRefineError(error.message || t('refineFailedAlert'), false);
+            // Bundled system-prompt asset failed to load -> fixed friendly float.
+            if (error instanceof AssetLoadError) {
+                showErrorFloat(error.message || t('systemPromptLoadFailed'));
+            } else if (classifyRequestError(error)) {
+                // The LLM request itself failed (network unreachable, 401/403,
+                // 404, 5xx ...): a friendly float telling the user whether it
+                // looks like a network or a configuration problem.
+                showErrorFloat(requestErrorMessage(error, 'llm', t));
+            } else {
+                // Malformed JSON on every attempt (or other non-request
+                // failure): keep the red error line until the next submit.
+                showRefineError(error.message || t('refineFailedAlert'), false);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -142,18 +164,21 @@ export const useStartDesign = ({ prompt, selectedRatio, width, height, images }:
         throw new Error('Refine failed.'); // unreachable: the loop returns or throws
     };
 
+    // The system prompt is a BUNDLED same-origin asset, not a remote service:
+    // any fetch-level failure (including a non-2xx) is an asset problem, so
+    // wrap the cause in an AssetLoadError with the user-facing message.
     const loadSystemPrompt = async (): Promise<string> => {
         try {
             const response = await fetch(getPublicAssetUrl('/system_prompt.txt'));
             if (!response.ok) {
-                throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
+                throw new HttpError(`Failed to fetch system prompt: ${response.status} ${response.statusText}`, response.status);
             }
             return await response.text();
         } catch (error) {
             console.error('[loadSystemPrompt Error]:', error);
-            throw new Error(t('systemPromptLoadFailed'));
+            throw new AssetLoadError(t('systemPromptLoadFailed'), error);
         }
     };
 
-    return { isLoading, refineError, handleStartDesigning };
+    return { isLoading, refineError, errorFloatMessage, handleStartDesigning };
 };

@@ -71,7 +71,7 @@ export const GenerateRow = ({
             </TouchableOpacity>
             {showSaved && <Text style={styles.savedText}>{t('saved')}</Text>}
         </View>
-        {generateError && <Text style={styles.generateError}>{generateError}</Text>}
+        {generateError && <Text style={styles.generateError} testID="generate-error">{generateError}</Text>}
     </>
     );
 };

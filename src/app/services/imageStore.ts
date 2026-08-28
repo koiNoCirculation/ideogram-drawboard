@@ -6,6 +6,7 @@
  * every image (generated or bundled example) lives in this store, and a ref
  * is resolved by looking the id up here.
  */
+import { HttpError } from './requestError';
 
 /** One persisted image. `uri` is a full `data:<mime>;base64,...` string. */
 export interface StoredImage {
@@ -13,6 +14,14 @@ export interface StoredImage {
     uri: string;
     createdAt: number;
 }
+
+/**
+ * Outcome of saveGeneratedImage. On success the caller gets the id the image
+ * was stored under; on failure the error that caused it (an HttpError when a
+ * non-2xx fetch answered, the raw error otherwise) — the UI layer classifies
+ * it to decide between the network-error float and the local-storage line.
+ */
+export type SaveImageResult = { ok: true; id: string } | { ok: false; error: Error };
 
 const DB_NAME = 'drawboard-images';
 const DB_VERSION = 1;
@@ -84,28 +93,28 @@ async function putImage(image: StoredImage): Promise<void> {
 
 /**
  * Fetch `url`, convert it to a base64 data URI, and persist it in the image
- * store; returns the id it was stored under (a fresh random one when `id` is
- * omitted, the caller's id otherwise — so stable-id callers can check-then-
- * store without duplicating). On ANY failure (fetch/CORS/network, non-2xx,
- * IDB unavailable) returns null — there is no raw-URL fallback, a ref that
- * can't be persisted doesn't exist. Never throws.
+ * store; resolves to the id it was stored under (a fresh random one when
+ * `id` is omitted, the caller's id otherwise — so stable-id callers can
+ * check-then-store without duplicating). On ANY failure (fetch/CORS/network,
+ * non-2xx, IDB unavailable) resolves to { ok: false, error } — there is no
+ * raw-URL fallback, a ref that can't be persisted doesn't exist. Never throws.
  */
-export async function saveGeneratedImage(url: string, id?: string): Promise<string | null> {
+export async function saveGeneratedImage(url: string, id?: string): Promise<SaveImageResult> {
     const imageId = id || newImageId();
     try {
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status}`);
+            throw new HttpError(`Failed to fetch image: ${response.status}`, response.status);
         }
         const buf = await response.arrayBuffer();
         const contentType = (response.headers?.get?.('content-type') ?? '').split(';')[0].trim();
         const mime = contentType || 'image/png';
         const uri = `data:${mime};base64,${arrayBufferToBase64(buf)}`;
         await putImage({ id: imageId, uri, createdAt: Date.now() });
-        return imageId;
+        return { ok: true, id: imageId };
     } catch (error) {
         console.error('[saveGeneratedImage Error]:', error);
-        return null;
+        return { ok: false, error: error as Error };
     }
 }
 

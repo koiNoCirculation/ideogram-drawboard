@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { ErrorFloat, useErrorFloat } from './components/ErrorFloat';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { RecentDesignsWall } from './components/RecentDesignsWall';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -62,11 +63,16 @@ export default function IndexScreen() {
 
     // Start Design flow (settings validation → refine with retry → handoff →
     // navigate); also owns the red LLM error line (transient "retrying"
-    // notices, persistent final failures). Triggered by the circular arrow
-    // button inside the prompt bar.
-    const { isLoading, refineError, handleStartDesigning } = useStartDesign({
+    // notices, persistent final failures) and the red float for LLM request /
+    // system-prompt asset failures. Triggered by the circular arrow button
+    // inside the prompt bar.
+    const { isLoading, refineError, errorFloatMessage, handleStartDesigning } = useStartDesign({
         prompt, selectedRatio, width, height, images: refImages,
     });
+    // Red float for the bundled example collection failing to load (once, at
+    // mount) — a different flow from the Start-Design float, rendered on its
+    // own ErrorFloat.
+    const { message: exampleFloatMessage, show: showExampleFloat } = useErrorFloat();
 
     // Reference images into the prompt bar, via drag-and-drop OR clipboard
     // paste (Ctrl+V). RN has no native DnD, so attach DOM listeners to the
@@ -149,9 +155,12 @@ export default function IndexScreen() {
     useEffect(() => {
         setDesigns(loadDesigns());
         // Populate the default Home wall with the bundled example collection;
-        // a load failure leaves the wall empty (its empty state shows).
-        loadExampleCollection().then((entries) =>
-            setExamples(entries.map((entry, i) => exampleToDesign(entry, i))));
+        // a load failure leaves the wall empty (its empty state shows) and
+        // floats a friendly "couldn't load the examples" message.
+        loadExampleCollection().then(({ entries, error }) => {
+            setExamples(entries.map((entry, i) => exampleToDesign(entry, i)));
+            if (error) showExampleFloat(t('examplesLoadFailed'));
+        });
     }, []);
 
     // Resolve each design's latest image (ids into the IndexedDB image store —
@@ -236,6 +245,10 @@ export default function IndexScreen() {
     return (
         <>
             <Stack.Screen options={{ headerShown: false }} />
+            {/* Red floats: LLM request / system-prompt failures (Start
+                Design) and the example-collection load failure. */}
+            <ErrorFloat message={errorFloatMessage} />
+            <ErrorFloat message={exampleFloatMessage} />
             <SafeAreaView style={styles.container}>
                 {/* Language switcher (flag), pinned left of the settings gear. */}
                 <LanguageSwitcher style={styles.langButton} />
@@ -343,10 +356,11 @@ export default function IndexScreen() {
                                 </View>
                             )}
 
-                            {/* Red LLM error line: "retrying" auto-dismisses
-                                after 5s, final failures (bad endpoint, HTTP
-                                error, all JSON retries failed) persist until
-                                the next submit. */}
+                            {/* Red LLM error line: non-request failures only —
+                                missing settings (persistent) and "retrying"
+                                (auto-dismisses after 5s) / all JSON retries
+                                failed (persistent until the next submit).
+                                LLM request failures surface in the red float. */}
                             {refineError && (
                                 <View style={styles.refineErrorRow} testID="refine-error">
                                     <Text style={styles.refineErrorText}>{refineError}</Text>

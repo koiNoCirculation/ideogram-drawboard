@@ -105,11 +105,21 @@ const enUS = {
     imageSaveFailed: 'Image generated, but saving it locally failed — try again.',
     noImageYet: 'No image has been generated yet — generate one first, then download.',
     downloadFailed: 'Download failed',
-    requestFailedStatus: 'Request failed with status {status}',
     noImageUrl: 'No image URL in response',
     rewriteNoJson: 'The bbox-rewrite model did not return a JSON caption.',
     rewriteMissingElements: 'The rewritten caption is missing compositional_deconstruction.elements.',
     rewritePromptLoadFailed: 'Could not load the bbox-rewrite system prompt. Please ensure assets are correctly bundled.',
+    // Network-error float (friendly wording: network vs configuration)
+    netServiceLlm: 'the language model (LLM) service',
+    netServiceImage: 'the image generation service',
+    netServiceDownload: 'the image file',
+    netUnreachable: 'Network problem: can\'t reach {service}. Check your internet connection, or verify the endpoint URL in Settings.',
+    netAuth: 'Settings problem: {service} rejected the credentials (status {status}). Check the secret key in Settings.',
+    netNotFound: 'Settings problem: {service} endpoint not found (status {status}). Check the endpoint URL (and model name) in Settings.',
+    netRejected: 'Settings problem: the request to {service} was rejected (status {status}). Check the endpoint and key in Settings.',
+    netServer: '{service} is temporarily unavailable (status {status}). Please try again in a moment.',
+    netUnexpected: '{service} returned an unexpected response. Check the endpoint in Settings, or try again.',
+    examplesLoadFailed: 'The example collection could not be loaded. Please refresh the page — if it keeps failing, check your connection or the app deployment.',
 };
 
 const zhCN: Record<keyof typeof enUS, string> = {
@@ -194,11 +204,21 @@ const zhCN: Record<keyof typeof enUS, string> = {
     imageSaveFailed: '图片已生成，但本地保存失败 — 请重试。',
     noImageYet: '还没有生成任何图片 — 请先生成图片，然后再下载。',
     downloadFailed: '下载失败',
-    requestFailedStatus: '请求失败，状态码 {status}',
     noImageUrl: '响应中没有图片 URL',
     rewriteNoJson: '改写模型未返回 JSON 描述。',
     rewriteMissingElements: '改写结果缺少 compositional_deconstruction.elements。',
     rewritePromptLoadFailed: '无法加载改写系统提示词，请确认资源已正确打包。',
+    // 网络错误浮窗（友好措辞：区分网络问题与配置问题）
+    netServiceLlm: '语言模型（LLM）服务',
+    netServiceImage: '图片生成服务',
+    netServiceDownload: '要下载的图片文件',
+    netUnreachable: '网络问题：无法连接到{service}。请检查网络连接，或核对设置中的端点地址。',
+    netAuth: '配置问题：{service}拒绝了身份凭据（状态码 {status}）。请检查设置中的密钥。',
+    netNotFound: '配置问题：找不到{service}端点（状态码 {status}）。请检查设置中的端点地址（和模型名）。',
+    netRejected: '配置问题：发往{service}的请求被拒绝（状态码 {status}）。请检查设置中的端点地址与密钥。',
+    netServer: '{service}暂时不可用（状态码 {status}）。请稍后重试。',
+    netUnexpected: '{service}返回了意外的响应。请检查设置中的端点地址，或重试。',
+    examplesLoadFailed: '示例集加载失败，请刷新页面重试——若持续失败，请检查网络连接或应用部署。',
 };
 
 export type TranslationKey = keyof typeof enUS;

@@ -1,9 +1,16 @@
 import { Dispatch, RefObject, SetStateAction, useEffect, useRef, useState } from 'react';
+import { useErrorFloat } from '../components/ErrorFloat';
 import { clearDesignHandoff, Design, upsertDesign } from '../services/designStore';
 import { normalizePromptForIdeogram } from '../services/IdeogramPrompt';
 import { resolveContradictionInBBox } from '../services/PromptRefiner';
 import { downloadImage } from '../services/imageDownload';
 import { resolveImageRef, saveGeneratedImage } from '../services/imageStore';
+import {
+    AssetLoadError,
+    HttpError,
+    classifyRequestError,
+    requestErrorMessage,
+} from '../services/requestError';
 import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
 import { getPublicAssetUrl } from '../services/publicAsset';
 import { RefinedPrompt, isEmptyElement } from '../types';
@@ -34,17 +41,20 @@ function parseRewrittenCaption(content: string, t: T): RefinedPrompt {
     return parsed as RefinedPrompt;
 }
 
-// Load the bbox-rewrite system prompt from the public assets directory.
+// Load the bbox-rewrite system prompt from the public assets directory. The
+// file is a BUNDLED same-origin asset, not a remote service: any fetch-level
+// failure (including a non-2xx) is an asset problem, so wrap the cause in an
+// AssetLoadError carrying the user-facing message.
 async function loadRewriteSystemPrompt(t: T): Promise<string> {
     try {
         const response = await fetch(getPublicAssetUrl('/system_prompt_rewrite_adapt_bbox.txt'));
         if (!response.ok) {
-            throw new Error(`Failed to fetch system prompt: ${response.status} ${response.statusText}`);
+            throw new HttpError(`Failed to fetch system prompt: ${response.status} ${response.statusText}`, response.status);
         }
         return await response.text();
     } catch (error) {
         console.error('[loadRewriteSystemPrompt Error]:', error);
-        throw new Error(t('rewritePromptLoadFailed'));
+        throw new AssetLoadError(t('rewritePromptLoadFailed'), error);
     }
 }
 
@@ -81,18 +91,16 @@ export function useGeneration(
     const [showSaved, setShowSaved] = useState(false);
     // Downloading the current image (blob fetch in flight).
     const [isDownloading, setIsDownloading] = useState(false);
-    // Transient red floating error (e.g. no image generated yet);
+    // Red floating toast (download feedback + network/asset request failures);
     // auto-dismisses after 5s.
-    const [downloadError, setDownloadError] = useState<string | null>(null);
+    const { message: errorFloatMessage, show: showErrorFloat } = useErrorFloat();
     const flashTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const downloadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Clean up timers if the screen unmounts mid-blink / mid-save-flash.
     useEffect(() => () => {
         if (flashTimerRef.current) clearInterval(flashTimerRef.current);
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-        if (downloadErrorTimerRef.current) clearTimeout(downloadErrorTimerRef.current);
     }, []);
 
     // Blink the empty-element highlight for a few cycles, then settle on a
@@ -143,6 +151,9 @@ export function useGeneration(
         }
         setIsGenerating(true);
         setGenerateError(null);
+        // Which service a failed request was headed for — the float message
+        // names it (the bbox-rewrite LLM call vs the image service).
+        let activeService: 'llm' | 'image' = 'llm';
         try {
             // Only when the user actually moved or resized a box can descs be
             // at odds with bboxes — unedited designs skip the extra LLM call.
@@ -192,13 +203,16 @@ export function useGeneration(
             const headers: Record<string, string> = {};
             if (imageKey) headers['Api-Key'] = imageKey;
 
+            activeService = 'image';
             const response = await fetch(getImageUrl(settings), {
                 method: 'POST',
                 headers,
                 body: formData,
             });
             if (!response.ok) {
-                throw new Error(t('requestFailedStatus', { status: response.status }));
+                // Typed with the status so requestError can classify 401/403
+                // (bad key) vs 404 (bad endpoint) vs 5xx (server down).
+                throw new HttpError(`Image generation request failed: ${response.status}`, response.status);
             }
             const result = await response.json();
             const url: string | undefined = result?.data?.[0]?.url;
@@ -209,16 +223,33 @@ export function useGeneration(
             // (official Ideogram URLs expire). Persistence is the only image
             // path: if it fails there is no ref to keep, so the image is
             // dropped with an error instead of a raw-URL fallback.
-            const ref = await saveGeneratedImage(url);
-            if (!ref) {
-                setGenerateError(t('imageSaveFailed'));
+            const saved = await saveGeneratedImage(url);
+            if (!saved.ok) {
+                // Fetch of the generated URL failed -> network/config float;
+                // the IDB write failed -> the inline local-storage line.
+                if (classifyRequestError(saved.error)) {
+                    showErrorFloat(requestErrorMessage(saved.error, 'image', t));
+                } else {
+                    setGenerateError(t('imageSaveFailed'));
+                }
                 return;
             }
             // Append to the history and switch the canvas to the new latest image.
-            setImages((prev) => [...prev, ref]);
+            setImages((prev) => [...prev, saved.id]);
             setViewIndex(images.length);
         } catch (error: any) {
-            setGenerateError(error?.message ?? t('generationFailed'));
+            // Bundled rewrite-prompt asset failed -> fixed friendly float.
+            if (error instanceof AssetLoadError) {
+                showErrorFloat(error.message || t('rewritePromptLoadFailed'));
+            } else if (classifyRequestError(error)) {
+                // The LLM rewrite or the image request itself failed: a
+                // friendly float naming the service (network vs configuration).
+                showErrorFloat(requestErrorMessage(error, activeService, t));
+            } else {
+                // Non-request failure (malformed rewrite JSON, no URL in the
+                // response, ...): the inline red line.
+                setGenerateError(error?.message ?? t('generationFailed'));
+            }
         } finally {
             setIsGenerating(false);
         }
@@ -252,35 +283,30 @@ export function useGeneration(
     const shownIndex = images.length === 0 ? -1 : Math.min(viewIndex, images.length - 1);
     const shownImage = shownIndex >= 0 ? imageUris[shownIndex] ?? null : null;
 
-    // Show the transient download error; a fresh failure restarts the 5s timer.
-    const showDownloadError = (message: string) => {
-        setDownloadError(message);
-        if (downloadErrorTimerRef.current) clearTimeout(downloadErrorTimerRef.current);
-        downloadErrorTimerRef.current = setTimeout(() => setDownloadError(null), 5000);
-    };
-
     // Download the image currently shown on the canvas. Without a generated
     // image there is nothing to save — a transient red toast says so instead.
     const handleDownload = async () => {
         if (isDownloading) return;
         const ref = shownIndex >= 0 ? images[shownIndex] : null;
         if (!ref) {
-            showDownloadError(t('noImageYet'));
+            showErrorFloat(t('noImageYet'));
             return;
         }
         setIsDownloading(true);
-        setDownloadError(null);
         try {
             // Resolve the ref (id -> data URI); an id whose IndexedDB record is
             // gone has nothing to download yet either.
             const uri = await resolveImageRef(ref);
             if (!uri) {
-                showDownloadError(t('noImageYet'));
+                showErrorFloat(t('noImageYet'));
                 return;
             }
             await downloadImage(uri, `${designId}.png`);
         } catch (error: any) {
-            showDownloadError(error?.message ?? t('downloadFailed'));
+            // Network/HTTP failure fetching the file -> friendly float naming
+            // the problem; anything else -> the plain download-failed float.
+            const kind = classifyRequestError(error);
+            showErrorFloat(kind ? requestErrorMessage(error, 'download', t) : (error?.message ?? t('downloadFailed')));
         } finally {
             setIsDownloading(false);
         }
@@ -309,7 +335,7 @@ export function useGeneration(
         flashOn,
         showSaved,
         isDownloading,
-        downloadError,
+        errorFloatMessage,
         handleDownload,
         handleGenerate,
         handleSave,

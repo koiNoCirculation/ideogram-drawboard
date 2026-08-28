@@ -4,10 +4,13 @@
  * generation endpoint is mocked with page.route. Designs / settings / IDB
  * records are seeded in-page (single-payload evaluate — page functions can't
  * see module-level variables, so the design id travels inside the payload).
- * NOTE (S4): when saveGeneratedImage's conversion fetch fails there is no
- * raw-URL fallback — the image is dropped with an error line, so the failing
- * URL never reaches the browser's own <img> loads (a URL that 500s on every
- * load would make RN-web's Image drop itself from the DOM, ERRORED state).
+ * NOTE (S4): when saveGeneratedImage's conversion fetch fails with a non-2xx
+ * there is no raw-URL fallback — the image is dropped and a red float
+ * (testID error-float) carries the friendly status-coded message, so the
+ * failing URL never reaches the browser's own <img> loads (a URL that 500s
+ * on every load would make RN-web's Image drop itself from the DOM, ERRORED
+ * state). S8: an aborted generate request floats the friendly network
+ * wording instead of the raw "Failed to fetch".
  */
 const { chromium } = require('playwright');
 
@@ -194,9 +197,10 @@ const idbRecords = (page) => page.evaluate(() => new Promise((resolve, reject) =
             contentType: 'application/json',
             body: JSON.stringify({ data: [{ url: failUrl }] }),
         }));
-        // The conversion fetch inside saveGeneratedImage fails -> it returns
-        // null, so the image is dropped with an error line (no raw-URL ref).
-        // The URL is fetched exactly once (the conversion) and never rendered.
+        // The conversion fetch inside saveGeneratedImage answers 500 -> the
+        // image is dropped (no raw-URL ref) and a red float carries the
+        // friendly status-coded message. The URL is fetched exactly once
+        // (the conversion) and never rendered.
         let failImgHits = 0;
         await p.route('**/iseed-fail.png', (route) => {
             failImgHits++;
@@ -213,8 +217,15 @@ const idbRecords = (page) => page.evaluate(() => new Promise((resolve, reject) =
         await p.waitForTimeout(1200);
         ok(await p.locator('[data-testid="design-canvas"] img').count() === 0,
             'no canvas image when the conversion fetch fails');
-        ok(await p.getByText('Image generated, but saving it locally failed — try again.', { exact: true }).count() === 1,
-            'error line names the failed local save');
+        ok(await p.locator('[data-testid="error-float"]').count() === 1,
+            'red float appears for the failed conversion fetch');
+        const floatText = await p.locator('[data-testid="error-float"]').textContent();
+        ok(floatText.includes('status 500'), `float carries the status code ("${floatText}")`);
+        ok(!floatText.includes('boom'), 'float never leaks the response body');
+        ok(await p.locator('[data-testid="generate-error"]').count() === 0,
+            'no inline error line for a fetch failure');
+        ok(await p.getByText('Image generated, but saving it locally failed — try again.', { exact: true }).count() === 0,
+            'the old inline save-failure text is gone');
         ok(await p.getByText('Generated (1)').count() === 0, 'failed image does not enter the history');
         ok((await idbRecords(p)).length === countBefore, 'no new IDB record for the failed image');
         ok(failImgHits === 1, 'the URL was fetched once (conversion only), never rendered');
@@ -297,6 +308,27 @@ const idbRecords = (page) => page.evaluate(() => new Promise((resolve, reject) =
             p.getByText('Download Image', { exact: true }).click(),
         ]);
         ok(download.suggestedFilename() === `${DESIGN_ID}.png`, `download filename is ${DESIGN_ID}.png (got ${download.suggestedFilename()})`);
+        await p.close();
+    });
+
+    // ---------- S8: aborted generate request -> network float ----------
+    await section('S8 aborted generate request shows a network float', async () => {
+        const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+        await p.route('**/v1/ideogram-v4/generate', (route) => route.abort());
+        await gotoSeeded(p, `${BASE}/design?id=${DESIGN_ID}`, {
+            settings: mkSettings(),
+            handoff: { promptData: JSON.stringify(PROMPT), size: { width: 800, height: 600 } },
+        });
+        await p.getByText('Generate', { exact: true }).first().click();
+        await p.waitForSelector('[data-testid="error-float"]', { timeout: 15000 });
+        const text = await p.locator('[data-testid="error-float"]').textContent();
+        ok(text.includes('Network problem'), `float frames an aborted request as a network issue ("${text}")`);
+        ok(text.includes('image generation service'), 'float names the image generation service');
+        ok(!text.includes('Failed to fetch'), 'float never leaks the raw "Failed to fetch"');
+        ok(await p.locator('[data-testid="generate-error"]').count() === 0,
+            'no inline error line for a request failure');
+        ok(await p.locator('[data-testid="design-canvas"] img').count() === 0,
+            'no canvas image for the aborted generation');
         await p.close();
     });
 

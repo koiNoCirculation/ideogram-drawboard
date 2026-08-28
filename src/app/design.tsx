@@ -11,6 +11,7 @@ import { HeaderBackButton } from './components/design/HeaderBackButton';
 import { MetadataBar } from './components/design/MetadataBar';
 import { PromptDialog } from './components/design/PromptDialog';
 import { Toolbar } from './components/design/Toolbar';
+import { ErrorFloat } from './components/ErrorFloat';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { SettingsDialog } from './components/SettingsDialog';
 import { snapToGridValue } from './design/canvas';
@@ -400,15 +401,9 @@ export default function DesignScreen() {
                 />
             )}
 
-            {/* Transient red floating toast for download failures (e.g. no
-                image generated yet); auto-dismisses after 5s. */}
-            {generation.downloadError && (
-                <View style={styles.downloadErrorToast} pointerEvents="none">
-                    <View style={styles.downloadErrorToastBox} testID="download-error">
-                        <Text style={styles.downloadErrorText}>{generation.downloadError}</Text>
-                    </View>
-                </View>
-            )}
+            {/* Red floating toast: download feedback (e.g. no image generated
+                yet) and network/asset request failures; auto-dismisses 5s. */}
+            <ErrorFloat message={generation.errorFloatMessage} />
 
             {/* Show Prompt dialog: original prompt (left, may be empty) vs. the refined structured JSON (right). */}
             {showPromptDialog && refinedData && (

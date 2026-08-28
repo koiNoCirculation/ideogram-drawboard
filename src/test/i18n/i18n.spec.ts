@@ -89,6 +89,23 @@ describe('translate', () => {
         expect(translate('en-US', 'originalPrompt')).toBe('Original Prompt');
         expect(translate('en-US', 'enhancedPrompt')).toBe('Structured Prompt');
         expect(translate('en-US', 'saveSettings')).toBe('Save Settings');
+        expect(translate('en-US', 'netServiceLlm')).toBe('the language model (LLM) service');
+        expect(translate('en-US', 'netServiceImage')).toBe('the image generation service');
+        expect(translate('en-US', 'netServiceDownload')).toBe('the image file');
+        expect(translate('en-US', 'netUnreachable', { service: 'svc' }))
+            .toBe('Network problem: can\'t reach svc. Check your internet connection, or verify the endpoint URL in Settings.');
+        expect(translate('en-US', 'netAuth', { service: 'svc', status: 401 }))
+            .toBe('Settings problem: svc rejected the credentials (status 401). Check the secret key in Settings.');
+        expect(translate('en-US', 'netNotFound', { service: 'svc', status: 404 }))
+            .toBe('Settings problem: svc endpoint not found (status 404). Check the endpoint URL (and model name) in Settings.');
+        expect(translate('en-US', 'netRejected', { service: 'svc', status: 400 }))
+            .toBe('Settings problem: the request to svc was rejected (status 400). Check the endpoint and key in Settings.');
+        expect(translate('en-US', 'netServer', { service: 'svc', status: 500 }))
+            .toBe('svc is temporarily unavailable (status 500). Please try again in a moment.');
+        expect(translate('en-US', 'netUnexpected', { service: 'svc' }))
+            .toBe('svc returned an unexpected response. Check the endpoint in Settings, or try again.');
+        expect(translate('en-US', 'examplesLoadFailed'))
+            .toBe('The example collection could not be loaded. Please refresh the page — if it keeps failing, check your connection or the app deployment.');
     });
 
     it('returns the required Chinese strings', () => {
@@ -119,6 +136,23 @@ describe('translate', () => {
         expect(translate('zh-CN', 'originalPrompt')).toBe('原始 Prompt');
         expect(translate('zh-CN', 'enhancedPrompt')).toBe('结构化 Prompt');
         expect(translate('zh-CN', 'saveSettings')).toBe('保存设置');
+        expect(translate('zh-CN', 'netServiceLlm')).toBe('语言模型（LLM）服务');
+        expect(translate('zh-CN', 'netServiceImage')).toBe('图片生成服务');
+        expect(translate('zh-CN', 'netServiceDownload')).toBe('要下载的图片文件');
+        expect(translate('zh-CN', 'netUnreachable', { service: '服务' }))
+            .toBe('网络问题：无法连接到服务。请检查网络连接，或核对设置中的端点地址。');
+        expect(translate('zh-CN', 'netAuth', { service: '服务', status: 401 }))
+            .toBe('配置问题：服务拒绝了身份凭据（状态码 401）。请检查设置中的密钥。');
+        expect(translate('zh-CN', 'netNotFound', { service: '服务', status: 404 }))
+            .toBe('配置问题：找不到服务端点（状态码 404）。请检查设置中的端点地址（和模型名）。');
+        expect(translate('zh-CN', 'netRejected', { service: '服务', status: 400 }))
+            .toBe('配置问题：发往服务的请求被拒绝（状态码 400）。请检查设置中的端点地址与密钥。');
+        expect(translate('zh-CN', 'netServer', { service: '服务', status: 500 }))
+            .toBe('服务暂时不可用（状态码 500）。请稍后重试。');
+        expect(translate('zh-CN', 'netUnexpected', { service: '服务' }))
+            .toBe('服务返回了意外的响应。请检查设置中的端点地址，或重试。');
+        expect(translate('zh-CN', 'examplesLoadFailed'))
+            .toBe('示例集加载失败，请刷新页面重试——若持续失败，请检查网络连接或应用部署。');
     });
 
     it('substitutes {placeholder} variables', () => {

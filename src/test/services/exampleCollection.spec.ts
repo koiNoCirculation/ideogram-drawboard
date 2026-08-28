@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import { IDBFactory } from 'fake-indexeddb';
 import { RefinedPrompt } from '../../app/types';
+import { HttpError } from '../../app/services/requestError';
 
 // 1x1 PNG, same fixture the other suites use.
 const PNG_B64 =
@@ -67,8 +68,9 @@ afterEach(() => {
 
 test('loadExampleCollection: fetches the collection and persists each image under a stable id', async () => {
     stubFetch([ENTRY]);
-    const entries = await exampleCollection.loadExampleCollection();
+    const { entries, error } = await exampleCollection.loadExampleCollection();
 
+    expect(error).toBeNull();
     expect(fetchCalls()).toEqual(['/example_collection/example.json', ENTRY.url]);
     expect(entries).toHaveLength(1);
     expect(entries[0].imageId).toBe(STABLE_ID);
@@ -78,7 +80,7 @@ test('loadExampleCollection: fetches the collection and persists each image unde
 test('loadExampleCollection: an image already in the store is not re-fetched', async () => {
     await imageStore.saveGeneratedImage(ENTRY.url, STABLE_ID); // 1 image fetch
     stubFetch([ENTRY]);
-    const entries = await exampleCollection.loadExampleCollection();
+    const { entries } = await exampleCollection.loadExampleCollection();
 
     const imageFetches = fetchCalls().filter((u) => u === ENTRY.url);
     expect(imageFetches).toHaveLength(1); // only the pre-seed, not a second one
@@ -87,7 +89,7 @@ test('loadExampleCollection: an image already in the store is not re-fetched', a
 
 test('loadExampleCollection: invalid entries are filtered out', async () => {
     stubFetch([ENTRY, { url: '', jsonprompt: JSONPROMPT, prompt: 'x' }, { url: '/a.png', prompt: 42 }]);
-    const entries = await exampleCollection.loadExampleCollection();
+    const { entries } = await exampleCollection.loadExampleCollection();
     expect(entries).toHaveLength(1);
     expect(entries[0].imageId).toBe(STABLE_ID);
 });
@@ -108,25 +110,37 @@ test('loadExampleCollection: an image that fails to persist gets imageId null (o
             headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? 'image/png' : null) },
         });
     });
-    const entries = await exampleCollection.loadExampleCollection();
+    const { entries, error } = await exampleCollection.loadExampleCollection();
+    // A single failing image stays silent (no collection error).
+    expect(error).toBeNull();
     expect(entries[0].imageId).toBeNull();
     expect(entries[1].imageId).toBe('img-design-other-999');
 });
 
-test('loadExampleCollection: non-2xx collection response resolves to an empty list', async () => {
+test('loadExampleCollection: non-2xx collection response -> empty list + HttpError with the status', async () => {
     (global as any).fetch = jest.fn(() =>
         Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve([ENTRY]) }));
-    expect(await exampleCollection.loadExampleCollection()).toEqual([]);
+    // require() fresh: jest.resetModules() re-instantiated requestError for
+    // the exampleCollection module, so the top-level import's class is stale.
+    const { HttpError } = require('../../app/services/requestError');
+    const result = await exampleCollection.loadExampleCollection();
+    expect(result.entries).toEqual([]);
+    expect(result.error).toBeInstanceOf(HttpError);
+    expect((result.error as HttpError).status).toBe(404);
 });
 
-test('loadExampleCollection: a non-array payload resolves to an empty list', async () => {
+test('loadExampleCollection: a non-array payload -> empty list + error', async () => {
     stubFetch({ prompt: 'not an array' });
-    expect(await exampleCollection.loadExampleCollection()).toEqual([]);
+    const result = await exampleCollection.loadExampleCollection();
+    expect(result.entries).toEqual([]);
+    expect(result.error).toBeInstanceOf(Error);
 });
 
-test('loadExampleCollection: a network failure resolves to an empty list (no throw)', async () => {
+test('loadExampleCollection: a network failure -> empty list + error (no throw)', async () => {
     (global as any).fetch = jest.fn(() => Promise.reject(new Error('offline')));
-    expect(await exampleCollection.loadExampleCollection()).toEqual([]);
+    const result = await exampleCollection.loadExampleCollection();
+    expect(result.entries).toEqual([]);
+    expect(result.error).toBeInstanceOf(Error);
 });
 
 test('sizeFromRatio: 1:1 -> square baseline, landscape -> width baseline, portrait -> height baseline', () => {

@@ -1,19 +1,26 @@
 /**
- * E2E: home page "Start Design" — a misconfigured LLM endpoint must surface
- * as a RED error line above the prompt bar (testID refine-error). Alert.alert
- * is a no-op on web, so previously a bad endpoint showed nothing at all.
+ * E2E: home page "Start Design" — LLM-side failures must surface in a way
+ * the user can act on. Request failures (unreachable endpoint, HTTP errors)
+ * go to the red floating toast (testID error-float, auto-dismiss ~5s) with
+ * friendly wording that distinguishes network problems from configuration
+ * problems — never the raw "Failed to fetch" / "LLM API Error" text.
+ * Non-request failures (missing settings, malformed JSON on every attempt)
+ * stay in the RED error line above the prompt bar (testID refine-error).
  *
- *  S1: unreachable endpoint (connection refused) -> red line "Failed to
- *      fetch"; the line PERSISTS past the 5s transient window (final
- *      failures are not auto-dismissed); fixing the endpoint in localStorage
- *      and re-clicking clears the old error and navigates to /design.
- *  S2: endpoint answers HTTP 500 -> red line "LLM API Error (500): …",
- *      exactly 1 LLM call, no navigation.
+ *  S1: unreachable endpoint (connection refused) -> red float "Network
+ *      problem: …", NOT "Failed to fetch", red background, no inline line;
+ *      the float auto-dismisses by ~6s; fixing the endpoint in localStorage
+ *      and re-clicking navigates to /design.
+ *  S2: endpoint answers HTTP 500 -> red float "… temporarily unavailable
+ *      (status 500) …", NOT "LLM API Error"/"boom", exactly 1 LLM call, no
+ *      navigation, no inline line.
  *  S3: empty self-hosted endpoint -> red line "Missing settings: LLM
  *      endpoint …", NO LLM request leaving the page, no navigation.
  *  S4: endpoint answers but with malformed JSON on every attempt -> red line
  *      "The LLM returned invalid JSON on every attempt." after exactly 3
  *      calls, no navigation.
+ *  S5: endpoint answers HTTP 401 -> red float "Settings problem: … rejected
+ *      the credentials (status 401) …" — a configuration, not network, issue.
  *
  * Run against `expo start --web` on :8081. Screenshots -> ./temp.
  */
@@ -22,7 +29,7 @@ const path = require('path');
 
 const BASE = 'http://localhost:8081';
 const TEMP = path.join(__dirname, '..', 'temp');
-const RED = 'rgb(229, 57, 53)'; // refineErrorText color
+const RED = 'rgb(229, 57, 53)'; // float box / refine-error red
 
 const VALID_PROMPT = JSON.stringify({
     aspect_ratio: '4:3',
@@ -69,6 +76,7 @@ async function newPage(browser, settings) {
 }
 
 const errorLine = (page) => page.locator('[data-testid="refine-error"]');
+const errorFloat = (page) => page.locator('[data-testid="error-float"]');
 
 (async () => {
     const browser = await chromium.launch();
@@ -83,32 +91,34 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
     };
 
     // ================= S1: unreachable endpoint (connection refused) =====
-    await section('S1 unreachable endpoint: red error, persists, recovers', async () => {
+    await section('S1 unreachable endpoint: red float, auto-dismisses, recovers', async () => {
         // Port 59999 is not listening: fetch rejects with "Failed to fetch".
         const { page, errors } = await newPage(browser,
             mkSettings({ endpoint: 'http://127.0.0.1:59999/v1', secretKey: '', name: 'mock-model' }));
         await page.goto(BASE + '/', { waitUntil: 'networkidle' });
         await page.waitForTimeout(400);
         ok((await errorLine(page).count()) === 0, 'no error line before the first attempt');
+        ok((await errorFloat(page).count()) === 0, 'no float before the first attempt');
 
         await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
 
-        await page.waitForSelector('[data-testid="refine-error"]', { timeout: 15000 });
-        const text1 = await errorLine(page).textContent();
-        ok(text1.includes('Failed to fetch'), `red line shows the fetch failure ("${text1}")`);
-        const borderColor = await errorLine(page).evaluate((el) => getComputedStyle(el).borderTopColor);
-        ok(borderColor === RED, `error line carries the red style (${borderColor})`);
+        await page.waitForSelector('[data-testid="error-float"]', { timeout: 15000 });
+        const text1 = await errorFloat(page).textContent();
+        ok(text1.includes('Network problem'), `float shows the friendly network wording ("${text1}")`);
+        ok(!text1.includes('Failed to fetch'), 'float never leaks the raw "Failed to fetch"');
+        ok(text1.includes('Settings'), 'float points at Settings for the endpoint URL');
+        const bg = await errorFloat(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+        ok(bg === RED, `float carries the red background (${bg})`);
+        ok((await errorLine(page).count()) === 0, 'no inline red line for a request failure');
         ok(!page.url().includes('/design'), 'no navigation on LLM failure');
         ok((await page.locator('[data-testid="start-design-button"] svg').count()) === 1,
             'send button re-enabled after the failure (arrow, not spinner)');
         await page.screenshot({ path: path.join(TEMP, 'shot_start_design_error_s1.png') });
 
-        // Final failures persist: still visible well past the 5s transient
-        // window (a misconfigured endpoint won't fix itself in 5s).
+        // The float is transient: gone by ~6s (it is a notice, not a state).
         await page.waitForTimeout(6000);
-        ok((await errorLine(page).count()) === 1,
-            'error line persists past the 5s auto-dismiss window');
+        ok((await errorFloat(page).count()) === 0, 'float auto-dismisses after ~5s');
 
         // Recovery: point the active profile at a reachable, mocked endpoint
         // (settings are re-read from localStorage on every click) and retry.
@@ -143,10 +153,12 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
         await page.locator('[data-testid="prompt-input"]').fill('a test dog');
         await page.locator('[data-testid="start-design-button"]').click();
 
-        await page.waitForSelector('[data-testid="refine-error"]', { timeout: 15000 });
-        const text = await errorLine(page).textContent();
-        ok(text.includes('LLM API Error (500)'), `red line shows the HTTP error ("${text}")`);
-        ok(text.includes('boom'), 'red line carries the response body detail');
+        await page.waitForSelector('[data-testid="error-float"]', { timeout: 15000 });
+        const text = await errorFloat(page).textContent();
+        ok(text.includes('temporarily unavailable'), `float frames a 500 as a server-side outage ("${text}")`);
+        ok(text.includes('status 500'), 'float carries the status code');
+        ok(!text.includes('LLM API Error') && !text.includes('boom'), 'float never leaks the raw error text/body');
+        ok((await errorLine(page).count()) === 0, 'no inline red line for a request failure');
         ok(llmCalls === 1, 'exactly 1 LLM call before the error');
         ok(!page.url().includes('/design'), 'no navigation on HTTP error');
         ok(errors.length === 0, `no page errors (${errors.join(' | ')})`);
@@ -209,6 +221,29 @@ const errorLine = (page) => page.locator('[data-testid="refine-error"]');
         ok(!page.url().includes('/design'), 'no navigation after all attempts failed');
         ok(errors.length === 0, `no page errors (${errors.join(' | ')})`);
         await page.screenshot({ path: path.join(TEMP, 'shot_start_design_error_s4.png') });
+        await page.close();
+    });
+
+    // ================= S5: HTTP 401 -> configuration wording =============
+    await section('S5 HTTP 401 names a configuration problem', async () => {
+        const { page, errors } = await newPage(browser,
+            mkSettings({ endpoint: 'http://localhost:8000/v1', secretKey: 'wrong-key', name: 'mock-model' }));
+        await page.route('**/v1/chat/completions', (route) =>
+            route.fulfill({ status: 401, contentType: 'text/plain', body: 'Unauthorized' }));
+        await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+        await page.waitForTimeout(400);
+
+        await page.locator('[data-testid="prompt-input"]').fill('a test dog');
+        await page.locator('[data-testid="start-design-button"]').click();
+
+        await page.waitForSelector('[data-testid="error-float"]', { timeout: 15000 });
+        const text = await errorFloat(page).textContent();
+        ok(text.includes('Settings problem'), `float frames a 401 as a configuration issue ("${text}")`);
+        ok(text.includes('credentials'), 'float names the credentials as the cause');
+        ok(text.includes('status 401'), 'float carries the status code');
+        ok(!page.url().includes('/design'), 'no navigation on HTTP error');
+        ok(errors.length === 0, `no page errors (${errors.join(' | ')})`);
+        await page.screenshot({ path: path.join(TEMP, 'shot_start_design_error_s5.png') });
         await page.close();
     });
 

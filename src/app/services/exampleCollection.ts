@@ -2,6 +2,7 @@ import { RefinedPrompt } from '../types';
 import { Design } from './designStore';
 import { resolveImageRef, saveGeneratedImage } from './imageStore';
 import { getPublicAssetUrl } from './publicAsset';
+import { HttpError } from './requestError';
 
 /**
  * One entry from the static example collection
@@ -27,26 +28,43 @@ export interface ExampleEntry extends RawExampleEntry {
 const EXAMPLE_COLLECTION_URL = getPublicAssetUrl('/example_collection/example.json');
 
 /**
+ * Outcome of loadExampleCollection. On success error is null; on any
+ * collection-level failure (network, non-2xx, non-array payload) entries is
+ * [] (the home wall shows its empty state) and error carries the cause — an
+ * HttpError for non-2xx, the raw error otherwise — so the UI can float a
+ * user-friendly "couldn't load the examples" message.
+ */
+export type ExampleCollectionResult = {
+    entries: ExampleEntry[];
+    error: Error | null;
+};
+
+/**
  * Fetch the example collection and persist each example image into the
  * IndexedDB image store under a stable id (the wall and the design page only
  * understand IDB refs). Any collection-level failure (network, non-2xx,
- * non-array payload) resolves to an empty list so the home wall shows its
- * empty state instead of crashing; a single image that fails to persist gets
- * imageId null (no tile) without affecting the others.
+ * non-array payload) resolves to an empty list plus the error so the home
+ * wall shows its empty state and a float instead of crashing; a single image
+ * that fails to persist gets imageId null (no tile) without affecting the
+ * others (and stays silent — the float is for the collection itself).
  */
-export async function loadExampleCollection(): Promise<ExampleEntry[]> {
+export async function loadExampleCollection(): Promise<ExampleCollectionResult> {
     let raw: unknown;
     try {
         const response = await fetch(EXAMPLE_COLLECTION_URL);
-        if (!response.ok) return [];
+        if (!response.ok) {
+            throw new HttpError(`Failed to load example collection: ${response.status}`, response.status);
+        }
         raw = await response.json();
     } catch (error) {
         console.error('[loadExampleCollection Error]:', error);
-        return [];
+        return { entries: [], error: error as Error };
     }
-    if (!Array.isArray(raw)) return [];
+    if (!Array.isArray(raw)) {
+        return { entries: [], error: new Error('Example collection is not an array') };
+    }
     const entries = (raw as RawExampleEntry[]).filter(isRawExampleEntry);
-    return Promise.all(entries.map((entry, i) => ensureImageId(entry, i)));
+    return { entries: await Promise.all(entries.map((entry, i) => ensureImageId(entry, i))), error: null };
 }
 
 function isRawExampleEntry(value: any): value is RawExampleEntry {
@@ -71,7 +89,7 @@ async function ensureImageId(entry: RawExampleEntry, index: number): Promise<Exa
     // subpath hosts; absolute http(s) urls are passed through untouched.
     const fetchUrl = entry.url.startsWith('/') ? getPublicAssetUrl(entry.url) : entry.url;
     const saved = await saveGeneratedImage(fetchUrl, id);
-    return { ...entry, imageId: saved };
+    return { ...entry, imageId: saved.ok ? saved.id : null };
 }
 
 // Baseline edge (px) used to turn an aspect ratio into a concrete canvas size,
