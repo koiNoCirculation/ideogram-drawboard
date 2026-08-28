@@ -1,56 +1,63 @@
-# Welcome to your Expo app 👋
+# Ideogram DrawBoard
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A web app (Expo / React Native Web) that turns a one-line description into an [Ideogram 4](https://ideogram.ai) image — with a canvas that lets you control exactly what goes where.
 
-## Get started
+Ideogram 4 introduced a structured JSON prompting interface with best-in-class multilingual text rendering, deep language understanding, explicit bounding-box layout, and color-palette controls. DrawBoard puts that interface to work: an LLM first rewrites your sentence into an **Ideogram 4.0 JSON prompt** (elements with bounding boxes, style, palette, background), you refine the layout on a visual canvas, and the app generates the final image.
 
-1. Install dependencies
+## Live app
 
-   ```bash
-   npm install
-   ```
+👉 [koinocirculation.github.io/ideogram-drawboard](https://koinocirculation.github.io/ideogram-drawboard/)
 
-2. Start the app
+## How it works
 
-   ```bash
-   npx expo start
-   ```
+1. **Describe** — Type what you want. Pick an aspect ratio (or a custom width/height) and, optionally, drop in one or more reference images (drag them onto the prompt bar, or paste from the clipboard).
+2. **Refine** — Your description is sent to an LLM and rewritten into a structured Ideogram 4.0 JSON prompt: a high-level description, style (aesthetics / lighting / medium / art style / photo / color palette), a background, and a list of elements — each with a bounding box.
+3. **Edit on canvas** — Every element appears as a box on the canvas. Drag to move it, resize from the corners, edit its text or description (with font options for text), toggle visibility in the layer list, adjust the color palette, and edit the background. Copy/paste and undo/redo are available throughout.
+4. **Generate** — The current canvas state is normalized into an Ideogram prompt and sent to the image service. The result appears on the canvas; every generation is kept in a history strip, saved locally, and can be downloaded as a PNG.
 
-In the output, you'll find options to open the app in a
+## Features
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- **Structured-prompt canvas** — elements are real, draggable, resizable boxes mapped to bounding boxes in the Ideogram 4.0 prompt.
+- **Precise layout control** — snap-to-grid, center-alignment guides, and 0–1000 rulers on both axes.
+- **Text with real font control** — set size, family, bold, and italic on text elements.
+- **Layer management** — a Photoshop-style layer list with per-element show/hide; hidden elements are excluded from generation.
+- **Color palette editing** — add, edit, and remove palette colors with a full color picker.
+- **Background editing** — rewrite the scene-shell description with one undo step.
+- **Reference images** — drag & drop or paste images to guide the prompt (sent to the LLM as multimodal input).
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
-## Get a fresh project
+## Setup
 
-When you're ready, run:
+### 1. Configure an LLM (for prompt refinement)
+
+DrawBoard needs an LLM to turn your description into a JSON prompt. Open the ⚙️ settings (top-right) and choose a provider:
+
+- **Preset vendors** — OpenAI, Google, DeepSeek, GLM, or Qwen: enter an API key and a model name.
+- **Self-hosted** — vLLM, SGLang, or Ollama: enter the endpoint (Ollama uses its native `/api/chat` API).
+
+Each provider keeps its own profile, so switching providers never overwrites another's settings.
+
+### 2. Configure image generation
+
+Choose one of:
+
+- **Official** — the Ideogram 4 API (`api.ideogram.ai`). Enter your Ideogram secret key.
+- **Custom** — a self-hosted [service](https://github.com/koiNoCirculation/ideogram4-local-server) (for example, one built on the open Ideogram 4 weights) that mirrors the official API. It must expose `POST /v1/ideogram-v4/generate`; point the endpoint at it (defaults to `http://127.0.0.1:8000`). 
+
+### 3. Create
+
+Describe your image, tweak the layout on the canvas, and hit **Generate**.
+
+## Local development
 
 ```bash
-npm run reset-project
+npm install
+npm run web     # start the dev server (web)
+npm test        # jest unit tests
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Playwright e2e suites live in `scripts/` and run against the dev server; intermediate artifacts (screenshots, logs) are written to `temp/`.
 
-### Other setup steps
+## Stack
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Expo / React Native Web, expo-router, and TypeScript. Images are generated by Ideogram 4 (the official API or a compatible endpoint); prompts are refined by any OpenAI-compatible LLM (or Ollama). The production build is deployed to GitHub Pages.
