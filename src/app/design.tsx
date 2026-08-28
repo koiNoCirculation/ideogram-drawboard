@@ -26,8 +26,9 @@ import { getDesign, getDesignHandoff, newDesignId } from './services/designStore
 import { RefinedPrompt } from './types';
 
 // Stack header config: a custom back button (see HeaderBackButton) in place
-// of the default one, which disappears after a refresh.
-const designScreenOptions = { headerLeft: () => <HeaderBackButton /> };
+// of the default one, which disappears after a refresh. The route's default
+// "design" title is emptied — the page has its own editable title in the body.
+const designScreenOptions = { title: '', headerLeft: () => <HeaderBackButton /> };
 
 export default function DesignScreen() {
     const params = useLocalSearchParams();

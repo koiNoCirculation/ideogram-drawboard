@@ -139,7 +139,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 - 首页图片墙（Home 模式）点示例 tile → 同样 `newDesignId` + `setDesignHandoff(id, { promptData, size, rawPrompt, images })`（`images` 为可选种子，携带示例参考图的 **IDB id**）→ 跳转；设计页加载时 `images` 取 `handoff?.images ?? stored?.images` 恢复图片历史。示例不落 store（用户 Save 才落）。
 - 首页图片墙（Recent Designs 模式）点 tile → 只带 `id` 重开设计（prompt/尺寸/图片历史都在设计 store 里，按 id 读回，显示最新一张）。
 - 设计页加载 effect 按 `params.id` 解析：**handoff 优先**（刚发起、未保存的设计），否则查设计 store；两者皆无（裸访问 /design）保留 "Canvas Area" 占位。
-- 设计页的返回按钮在 **Stack 页头**（"design" 标题左侧），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
+- 设计页的返回按钮在 **Stack 页头**（页头标题已清空——`Stack.Screen options.title: ''`，页头只显示返回按钮，页面正文自带可编辑标题），由 design.tsx 的 `Stack.Screen options.headerLeft` 渲染 `HeaderBackButton`（不是页面内标题栏）：默认的页头返回按钮只在 navigation state 有父 route 时显示，刷新后 state 只按当前 URL 重建（单 route）就会消失，自定义 headerLeft 保证始终显示。点击行为：本会话由首页进入设计页时（首页 push 前调 `markNavigationFromHome` 置 sessionStorage 标志 `drawboard.fromHome`，刷新后标志仍在）做**原生** `window.history.back()` 返回上一页——刷新后 `router.back()` 没有可弹的 route，原生后退触发 popstate 由路由处理并恢复首页；无标志时（裸 /design 访问、新标签、外部跳转而来）`router.replace('/')` 去首页。
 
 ## GitHub Pages 部署
 
@@ -187,7 +187,7 @@ Ideogram 4.0 JSON prompt，三个顶层 key：
 ### 初始化
 - `designId`：首页导航恒带 `id`（新设计由首页生成、重开设计复用原 id）；裸访问 /design 无 id 时现场生成（无数据，显示占位）。
 - 按 `id` 取数据（见「页面与导航」节：handoff 优先、否则设计 store）→ 解析 `promptData` → `refinedData`；`high_level_description` 作为标题；`style_description` 各字段 → 独立 UI 状态（aesthetics/lighting/medium/artStyle/photo/palette）；数据中的 `size` → 画布逻辑尺寸；`images` → 图片历史（handoff 的 `images` 优先——从首页示例开的设计由此种子其参考图——否则取 store 里的 `images`），`viewIndex` 指向最新一张。
-- 页头：可编辑标题 + 右侧 `LanguageSwitcher`（见「i18n」节）+ 设置齿轮按钮（打开设置对话框，见「设置」节）。返回按钮在 Stack 页头"design" 标题左侧（见「页面与导航」节）。
+- 页头：可编辑标题 + 右侧 `LanguageSwitcher`（见「i18n」节）+ 设置齿轮按钮（打开设置对话框，见「设置」节）。返回按钮在 Stack 页头（页头标题已清空 `title: ''`，见「页面与导航」节）。
 
 ### 元数据栏（六个部分，各 ≤20% 宽度，内部换行）
 一行六个部分：Aesthetics / Lighting / Art Style / Photo / Medium / Palette。
