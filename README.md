@@ -6,7 +6,7 @@ Ideogram 4 introduced a structured JSON prompting interface with best-in-class m
 
 ## Live app
 
-👉 [koinocirculation.github.io/ideogram-drawboard](https://koinocirculation.github.io/ideogram-drawboard/)
+👉 [Drawboard Demonstration](https://drawboard.belica-ly42.workers.dev/)
 
 ## How it works
 
