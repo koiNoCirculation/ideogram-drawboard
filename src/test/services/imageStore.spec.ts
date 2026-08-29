@@ -55,6 +55,32 @@ test('newImageId: img- prefixed id, unique across calls', () => {
     expect(a).not.toBe(b);
 });
 
+test('resolveGeneratedImageUrl: absolute and data urls pass through', () => {
+    const base = 'http://worker.test:8788';
+    expect(imageStore.resolveGeneratedImageUrl('https://images.ideogram.ai/x.png', base))
+        .toBe('https://images.ideogram.ai/x.png');
+    expect(imageStore.resolveGeneratedImageUrl('http://images.test/x.png', base))
+        .toBe('http://images.test/x.png');
+    expect(imageStore.resolveGeneratedImageUrl(EXPECTED_URI, base)).toBe(EXPECTED_URI);
+});
+
+test('resolveGeneratedImageUrl: relative urls join against the endpoint base', () => {
+    // The cf-worker proxy rewrites data[].url to a root-relative image_proxy
+    // path on itself — it must resolve against the worker, not the app origin.
+    expect(imageStore.resolveGeneratedImageUrl('/v1/ideogram-v4/image_proxy?url=https%3A%2F%2Fx%2Fa.png', 'http://worker.test:8788'))
+        .toBe('http://worker.test:8788/v1/ideogram-v4/image_proxy?url=https%3A%2F%2Fx%2Fa.png');
+    // A trailing slash on the base is tolerated.
+    expect(imageStore.resolveGeneratedImageUrl('/img.png', 'http://worker.test:8788/'))
+        .toBe('http://worker.test:8788/img.png');
+    // A bare relative path joins under the base root.
+    expect(imageStore.resolveGeneratedImageUrl('img.png', 'http://worker.test:8788'))
+        .toBe('http://worker.test:8788/img.png');
+    // "Official" mode has no host prefix: an empty base leaves the url as-is
+    // for the browser to resolve against the page origin.
+    expect(imageStore.resolveGeneratedImageUrl('/v1/ideogram-v4/image_proxy?url=https%3A%2F%2Fx%2Fa.png', ''))
+        .toBe('/v1/ideogram-v4/image_proxy?url=https%3A%2F%2Fx%2Fa.png');
+});
+
 test('saveGeneratedImage: stores under an explicit id when given (stable-id callers)', async () => {
     const result = await imageStore.saveGeneratedImage('http://images.test/new.png', 'img-stable-1');
     expect(result).toEqual({ ok: true, id: 'img-stable-1' });

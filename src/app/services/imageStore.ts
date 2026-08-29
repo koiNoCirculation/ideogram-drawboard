@@ -32,6 +32,28 @@ export function newImageId(): string {
     return `img-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Resolve a generated image url for fetching. The cf-worker CORS proxy
+ * rewrites `data[].url` to a ROOT-RELATIVE path on the worker
+ * (`/v1/ideogram-v4/image_proxy?url=…`); a browser would resolve that against
+ * the APP's origin (the static host) — the wrong host when the image service
+ * lives on another origin. Root-relative / relative urls are therefore joined
+ * against the image service endpoint base (trailing slashes tolerated);
+ * absolute http(s)/data: urls pass through. An EMPTY base ("Official" has no
+ * host prefix — its requests resolve against the app's own origin) leaves the
+ * url as-is for the browser to resolve against the page origin.
+ */
+export function resolveGeneratedImageUrl(url: string, endpointBase: string): string {
+    if (/^(https?:|data:)/i.test(url)) return url;
+    const base = endpointBase.replace(/\/+$/, '');
+    if (!base) return url;
+    try {
+        return new URL(url, `${base}/`).toString();
+    } catch {
+        return url;
+    }
+}
+
 // Singleton open promise; cleared on failure/close so a transient error
 // (or a missing indexedDB at module-eval time) doesn't poison later opens.
 let dbPromise: Promise<IDBDatabase> | null = null;

@@ -1,6 +1,6 @@
 import { expect, test } from '@jest/globals';
 import { TranslationKey } from '../../i18n/translations';
-import { AssetLoadError, HttpError, classifyRequestError, requestErrorMessage } from '../../app/services/requestError';
+import { AssetLoadError, HttpError, classifyRequestError, requestErrorMessage, upstreamErrorMessage } from '../../app/services/requestError';
 
 // Stub translator: records (key, vars) so the spec can assert which
 // translation the classifier picked without pulling in the real table.
@@ -28,6 +28,30 @@ test('HttpError: carries the status and stays an Error', () => {
     expect(error.message).toBe('LLM API Error (500): boom');
     expect(error.status).toBe(500);
     expect(error.name).toBe('HttpError');
+});
+
+test('HttpError: carries an optional upstream detail message', () => {
+    const withDetail = new HttpError('Image generation request failed: 422', 422, 'Prompt provided failed safety check');
+    expect(withDetail.detail).toBe('Prompt provided failed safety check');
+    expect(new HttpError('Image generation request failed: 422', 422).detail).toBeUndefined();
+});
+
+test('upstreamErrorMessage: extracts the official {"error": "…"} string body', () => {
+    const SAFETY = 'Prompt provided failed safety check due to the inclusion of prohibited content.';
+    expect(upstreamErrorMessage(JSON.stringify({ error: SAFETY }))).toBe(SAFETY);
+    // surrounding whitespace on the body / inside the string is trimmed
+    expect(upstreamErrorMessage(`  ${JSON.stringify({ error: '  boom  '})}  `)).toBe('boom');
+});
+
+test('upstreamErrorMessage: returns null when the body has no usable message', () => {
+    expect(upstreamErrorMessage('')).toBeNull();
+    expect(upstreamErrorMessage('<html>internal</html>')).toBeNull();
+    expect(upstreamErrorMessage('{"error": ""}')).toBeNull();
+    expect(upstreamErrorMessage('{"error": "   "}')).toBeNull();
+    expect(upstreamErrorMessage('{"error": 422}')).toBeNull();
+    // the OpenAI-style object form is NOT the official string form
+    expect(upstreamErrorMessage('{"error": {"message": "object form"}}')).toBeNull();
+    expect(upstreamErrorMessage('{"message": "wrong key"}')).toBeNull();
 });
 
 test('classifyRequestError: network-level TypeErrors are unreachable', () => {
@@ -81,6 +105,16 @@ test('requestErrorMessage: image + 401 -> netAuth with status', () => {
     expect(calls[0][0]).toBe('netServiceImage');
     expect(calls[1][0]).toBe('netAuth');
     expect(calls[1][1]).toEqual({ service: 'image svc', status: 401 });
+});
+
+test('requestErrorMessage: an HttpError detail replaces the friendly wording', () => {
+    const calls: Array<[TranslationKey, Record<string, string | number>?]> = [];
+    const SAFETY = 'Prompt provided failed safety check due to the inclusion of prohibited content.';
+    const message = requestErrorMessage(
+        new HttpError('Image generation request failed: 422', 422, SAFETY), 'image', stubT(calls),
+    );
+    expect(message).toBe(SAFETY); // upstream text verbatim
+    expect(calls).toHaveLength(0); // no i18n lookup at all
 });
 
 test('requestErrorMessage: download + 500 -> netServer with status', () => {

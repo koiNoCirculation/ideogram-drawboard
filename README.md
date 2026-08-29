@@ -41,8 +41,10 @@ Each provider keeps its own profile, so switching providers never overwrites ano
 
 Choose one of:
 
-- **Official** — the Ideogram 4 API (`api.ideogram.ai`). Enter your Ideogram secret key.
-- **Custom** — a self-hosted [service](https://github.com/koiNoCirculation/ideogram4-local-server) (for example, one built on the open Ideogram 4 weights) that mirrors the official API. It must expose `POST /v1/ideogram-v4/generate`; point the endpoint at it (defaults to `http://127.0.0.1:8000`). 
+Both modes request `POST …/v1/ideogram-v4/generate` — enter your Ideogram secret key (sent as the `Api-Key` header) in either case.
+
+- **Official** — requests the bare path `/v1/ideogram-v4/generate` with **no host prefix** (read-only in settings), resolved against the app's own origin — the deployment must serve that path on the same domain (e.g. a same-domain reverse proxy to `api.ideogram.ai` or the cf-worker).
+- **Custom** — a self-hosted [service](https://github.com/koiNoCirculation/ideogram4-local-server) (for example, one built on the open Ideogram 4 weights) or the separate **cf-worker** project — a Cloudflare Worker in front of the official API that adds the CORS headers browsers need (`api.ideogram.ai` can't be called cross-origin) and proxies the generated image back via `/v1/ideogram-v4/image_proxy`. It must expose `POST /v1/ideogram-v4/generate`; point the endpoint at it (defaults to `http://127.0.0.1:8000`). 
 
 ### 3. Create
 

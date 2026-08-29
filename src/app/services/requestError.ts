@@ -18,15 +18,39 @@ import { TranslationKey } from '../../i18n/translations';
  * here without any wrapping.
  */
 
-/** Non-2xx HTTP response; `status` drives the classification below. */
+/** Non-2xx HTTP response; `status` drives the classification below.
+ *  `detail` (optional) is the upstream service's own human-readable error
+ *  text (e.g. the official Ideogram API's {"error": "…"} body) — when set,
+ *  the UI shows it verbatim instead of the generic friendly wording. */
 export class HttpError extends Error {
     readonly status: number;
+    readonly detail?: string;
 
-    constructor(message: string, status: number) {
+    constructor(message: string, status: number, detail?: string) {
         super(message);
         this.name = 'HttpError';
         this.status = status;
+        this.detail = detail;
     }
+}
+
+/**
+ * Extract the upstream service's own error message from a non-2xx response
+ * body. The official Ideogram API answers failures with
+ * {"error": "<reason>"} (e.g. the prompt safety check) — that human-readable
+ * reason is surfaced verbatim in place of the generic friendly wording.
+ * Returns null when the body is not JSON or `error` is not a non-empty string
+ * (other shapes keep the status-driven wording).
+ */
+export function upstreamErrorMessage(body: string): string | null {
+    if (!body) return null;
+    try {
+        const error = (JSON.parse(body) as { error?: unknown })?.error;
+        if (typeof error === 'string' && error.trim()) return error.trim();
+    } catch {
+        // not JSON — no upstream message to surface
+    }
+    return null;
 }
 
 /** Bundled-asset load failure (system prompt txt, example collection). */
@@ -101,6 +125,9 @@ const KIND_KEY: Record<RequestErrorKind, TranslationKey> = {
  * connection, or verify the endpoint URL in Settings.
  */
 export function requestErrorMessage(error: unknown, service: RequestErrorService, t: Translate): string {
+    // The upstream service's own error text (e.g. Ideogram's safety-check
+    // message) replaces the generic friendly wording when it exists.
+    if (error instanceof HttpError && error.detail) return error.detail;
     const kind = classifyRequestError(error) ?? 'unexpected';
     const vars: Record<string, string | number> = { service: t(SERVICE_LABEL_KEY[service]) };
     if (error instanceof HttpError && kind !== 'unreachable') vars.status = error.status;

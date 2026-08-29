@@ -4,14 +4,15 @@ import { clearDesignHandoff, Design, upsertDesign } from '../services/designStor
 import { normalizePromptForIdeogram } from '../services/IdeogramPrompt';
 import { resolveContradictionInBBox } from '../services/PromptRefiner';
 import { downloadImage } from '../services/imageDownload';
-import { resolveImageRef, saveGeneratedImage } from '../services/imageStore';
+import { resolveGeneratedImageUrl, resolveImageRef, saveGeneratedImage } from '../services/imageStore';
 import {
     AssetLoadError,
     HttpError,
     classifyRequestError,
     requestErrorMessage,
+    upstreamErrorMessage,
 } from '../services/requestError';
-import { getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
+import { getImageBase, getImageUrl, getMissingSettings, loadSettings } from '../services/settings';
 import { getPublicAssetUrl } from '../services/publicAsset';
 import { RefinedPrompt, isEmptyElement } from '../types';
 import { useImageUris } from '../useImageUris';
@@ -211,19 +212,31 @@ export function useGeneration(
             });
             if (!response.ok) {
                 // Typed with the status so requestError can classify 401/403
-                // (bad key) vs 404 (bad endpoint) vs 5xx (server down).
-                throw new HttpError(`Image generation request failed: ${response.status}`, response.status);
+                // (bad key) vs 404 (bad endpoint) vs 5xx (server down). When
+                // the body carries the official {"error": "…"} message (e.g.
+                // the prompt safety check), surface it verbatim in the float.
+                const body = await response.text().catch(() => '');
+                throw new HttpError(
+                    `Image generation request failed: ${response.status}`,
+                    response.status,
+                    upstreamErrorMessage(body) ?? undefined,
+                );
             }
             const result = await response.json();
             const url: string | undefined = result?.data?.[0]?.url;
             if (!url) {
                 throw new Error(t('noImageUrl'));
             }
+            // The cf-worker proxy rewrites data[].url to a root-relative path on
+            // ITSELF (image_proxy) — a browser would resolve that against the
+            // app's own origin, so join relative urls against the image
+            // service endpoint (absolute urls pass through unchanged).
+            const fetchUrl = resolveGeneratedImageUrl(url, getImageBase(settings));
             // Persist the image as base64 in IndexedDB under a fresh random id
             // (official Ideogram URLs expire). Persistence is the only image
             // path: if it fails there is no ref to keep, so the image is
             // dropped with an error instead of a raw-URL fallback.
-            const saved = await saveGeneratedImage(url);
+            const saved = await saveGeneratedImage(fetchUrl);
             if (!saved.ok) {
                 // Fetch of the generated URL failed -> network/config float;
                 // the IDB write failed -> the inline local-storage line.

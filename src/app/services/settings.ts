@@ -18,8 +18,9 @@ export interface LlmProfile {
  * User-configurable endpoints/credentials, persisted in localStorage.
  * `llmProvider` selects the active profile in `llmProfiles`; preset vendors
  * ignore the profile's endpoint (they use their OpenAI-compatible base URL).
- * The image endpoint is only used for the "Custom" image provider (Official
- * uses the Ideogram 4 API).
+ * "Official" requests the bare root-relative path `/v1/ideogram-v4/generate`
+ * (no host prefix, never editable in settings); only "Custom" uses the
+ * user's `imageEndpoint` (the same path is appended to it).
  */
 export interface Settings {
     llmProvider: LlmProvider;
@@ -31,12 +32,7 @@ export interface Settings {
 
 const STORAGE_KEY = 'drawboard.settings';
 
-/**
- * Official Ideogram 4 API base. A "Custom" deployment mirrors the official
- * request path, so both providers share the same generate endpoint suffix.
- */
-export const IDEOGRAM_OFFICIAL_BASE = 'https://api.ideogram.ai';
-export const IDEOGRAM_GENERATE_PATH = '/v1/ideogram-v4/generate';
+/** Default base prefilled for the "Custom" image service. */
 export const DEFAULT_IMAGE_BASE = 'http://127.0.0.1:8000';
 /** Appended to the LLM endpoint (vendor base or self-hosted) to form the request URL. */
 export const LLM_CHAT_PATH = '/chat/completions';
@@ -146,10 +142,24 @@ export function getLlmUrl(s: Settings): string {
     return `${base.replace(/\/+$/, '')}${path}`;
 }
 
-/** The full Ideogram generate URL for the configured image provider. */
+/**
+ * The host base of the configured image service (no trailing slash).
+ * "Official" has NONE — its request is the bare root-relative path, resolved
+ * against the app's own origin — so this is ''; "Custom" is the user's endpoint.
+ */
+export function getImageBase(s: Settings): string {
+    return s.imageProvider === 'Official' ? '' : s.imageEndpoint.trim().replace(/\/+$/, '');
+}
+
+/**
+ * The Ideogram generate URL for the configured image provider: "Official"
+ * requests exactly `/v1/ideogram-v4/generate` (no prefix at all); "Custom"
+ * appends the same path to the user's endpoint.
+ */
 export function getImageUrl(s: Settings): string {
-    const base = (s.imageProvider === 'Custom' ? s.imageEndpoint : IDEOGRAM_OFFICIAL_BASE).trim();
-    return `${base.replace(/\/+$/, '')}${IDEOGRAM_GENERATE_PATH}`;
+    return s.imageProvider === 'Official'
+        ? '/v1/ideogram-v4/generate'
+        : `${getImageBase(s)}/v1/ideogram-v4/generate`;
 }
 
 /**

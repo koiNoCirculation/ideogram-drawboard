@@ -16,6 +16,7 @@ import {
 import { ErrorFloat, useErrorFloat } from './components/ErrorFloat';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { RecentDesignsWall } from './components/RecentDesignsWall';
+import { ResolutionPicker } from './components/ResolutionPicker';
 import { SettingsDialog } from './components/SettingsDialog';
 import { useI18n } from '../i18n';
 import { useStartDesign } from './useStartDesign';
@@ -23,8 +24,8 @@ import { useImageUris } from './useImageUris';
 import { Design, loadDesigns, markNavigationFromHome, newDesignId, setDesignHandoff } from './services/designStore';
 import { exampleToDesign, loadExampleCollection } from './services/exampleCollection';
 import { fileToDataUri } from './services/imageFile';
-
-const PRESET_RATIOS = ['4:3', '3:4', '16:9', '16:10', '9:16', '10:16', '1:1'];
+import { ImageProvider, loadSettings } from './services/settings';
+import { OFFICIAL_RATIO_GROUPS, pickOfficialSize, ratioLabel } from './services/resolutions';
 // The prompt bar's capsule height: 56px for a single line, growing with
 // wrapped multiline text up to 200px (longer text scrolls inside).
 const MIN_INPUT_BAR_HEIGHT = 56;
@@ -43,6 +44,10 @@ export default function IndexScreen() {
     const [selectedRatio, setSelectedRatio] = useState('4:3');
     const [width, setWidth] = useState('1024');
     const [height, setHeight] = useState('768');
+    // The image generation provider (settings); the size picker is
+    // provider-dependent (Official = fixed resolution list, Custom = the
+    // preset ratios + free W/H). Re-read when the settings dialog closes.
+    const [imageProvider, setImageProvider] = useState<ImageProvider>(() => loadSettings().imageProvider);
     // Saved designs backing the Recent Designs wall, most recent first.
     const [designs, setDesigns] = useState<Design[]>([]);
     // Bundled example designs (public/example_collection) backing the default
@@ -201,44 +206,66 @@ export default function IndexScreen() {
         router.push({ pathname: '/design', params: { id } });
     };
 
-    // Synchronize width/height when preset ratio changes
+    // Official: snap the default 4:3 1024×768 onto the fixed resolution list
+    // before the first paint (it is not an official size).
+    useLayoutEffect(() => {
+        if (imageProvider !== 'Official') return;
+        const r = pickOfficialSize(1024, 768);
+        setWidth(String(r.w));
+        setHeight(String(r.h));
+        setSelectedRatio(ratioLabel(r.w, r.h));
+    }, []);
+
+    // Synchronize width/height when a Custom preset ratio is selected (the
+    // official mode's W/H is owned by its resolution pills instead).
     useEffect(() => {
-        if (selectedRatio !== 'custom') {
-            const [rw, rh] = selectedRatio.split(':').map(Number);
-            // We use a baseline width of 1024 or height of 1024 depending on aspect
-            if (rw >= rh) {
-                setWidth('1024');
-                setHeight(Math.round(1024 * (rh / rw)).toString());
-            } else {
-                setHeight('1024');
-                setWidth(Math.round(1024 * (rw / rh)).toString());
-            }
+        if (imageProvider === 'Official' || selectedRatio === 'custom') return;
+        const [rw, rh] = selectedRatio.split(':').map(Number);
+        // We use a baseline width of 1024 or height of 1024 depending on aspect
+        if (rw >= rh) {
+            setWidth('1024');
+            setHeight(Math.round(1024 * (rh / rw)).toString());
+        } else {
+            setHeight('1024');
+            setWidth(Math.round(1024 * (rw / rh)).toString());
         }
-    }, [selectedRatio]);
+    }, [selectedRatio, imageProvider]);
 
-    const handleWidthChange = (val: string) => {
-        const cleanVal = val.replace(/[^0-9]/g, '');
-        setWidth(cleanVal);
-
-        if (selectedRatio !== 'custom') {
-            const [rw, rh] = selectedRatio.split(':').map(Number);
-            const wNum = parseInt(cleanVal) || 0;
-            if (wNum > 0) {
-                setHeight(Math.round(wNum * (rh / rw)).toString());
+    // Ratio pill (both modes); official mode also selects the ratio's LARGEST resolution.
+    const handleSelectRatio = (ratio: string) => {
+        setSelectedRatio(ratio);
+        if (imageProvider === 'Official') {
+            const top = OFFICIAL_RATIO_GROUPS.find((g) => g.ratio === ratio)?.resolutions[0];
+            if (top) {
+                setWidth(String(top.w));
+                setHeight(String(top.h));
             }
         }
     };
 
-    const handleHeightChange = (val: string) => {
-        const cleanVal = val.replace(/[^0-9]/g, '');
-        setHeight(cleanVal);
+    // Official resolution pill: the chosen size becomes W/H; the ratio its group label.
+    const handleResolutionSelect = (w: number, h: number) => {
+        setWidth(String(w));
+        setHeight(String(h));
+        setSelectedRatio(ratioLabel(w, h));
+    };
 
-        if (selectedRatio !== 'custom') {
-            const [rw, rh] = selectedRatio.split(':').map(Number);
-            const hNum = parseInt(cleanVal) || 0;
-            if (hNum > 0) {
-                setWidth(Math.round(hNum * (rw / rh)).toString());
-            }
+    // Settings dialog closed (Save or Cancel): re-read the persisted image
+    // provider and adapt the size state when it changed.
+    const handleSettingsClose = () => {
+        setShowSettings(false);
+        const provider = loadSettings().imageProvider;
+        setImageProvider(provider);
+        if (provider === imageProvider) return;
+        if (provider === 'Official') {
+            // The official set is fixed: snap the current W/H onto it.
+            const r = pickOfficialSize(parseInt(width, 10) || 0, parseInt(height, 10) || 0);
+            setWidth(String(r.w));
+            setHeight(String(r.h));
+            setSelectedRatio(ratioLabel(r.w, r.h));
+        } else {
+            // The official ratio may not exist among the Custom presets — park on 'custom' (keeps W/H).
+            setSelectedRatio('custom');
         }
     };
 
@@ -292,48 +319,17 @@ export default function IndexScreen() {
                         <View style={styles.hero}>
                             <Text style={styles.sectionTitle}>{t('enterDescription')}</Text>
 
-                            {/* Aspect Ratio Selection */}
-                            <View style={styles.ratioRow}>
-                                {PRESET_RATIOS.map((ratio) => (
-                                    <TouchableOpacity
-                                        key={ratio}
-                                        style={[styles.ratioButton, selectedRatio === ratio && styles.ratioButtonActive]}
-                                        onPress={() => setSelectedRatio(ratio)}
-                                    >
-                                        <Text style={[styles.ratioText, selectedRatio === ratio && styles.ratioTextActive]}>{ratio}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                                <TouchableOpacity
-                                    style={[styles.ratioButton, selectedRatio === 'custom' && styles.ratioButtonActive]}
-                                    onPress={() => setSelectedRatio('custom')}
-                                >
-                                    <Text style={[styles.ratioText, selectedRatio === 'custom' && styles.ratioTextActive]}>{t('customRatio')}</Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Dimensions Row */}
-                            <View style={styles.dimensionRow}>
-                                <View style={styles.dimensionGroup}>
-                                    <Text style={styles.dimensionLabel}>{t('widthLabel')}</Text>
-                                    <TextInput
-                                        style={styles.dimInput}
-                                        keyboardType="numeric"
-                                        value={width}
-                                        onChangeText={handleWidthChange}
-                                        testID="width-input"
-                                    />
-                                </View>
-                                <View style={styles.dimensionGroup}>
-                                    <Text style={styles.dimensionLabel}>{t('heightLabel')}</Text>
-                                    <TextInput
-                                        style={styles.dimInput}
-                                        keyboardType="numeric"
-                                        value={height}
-                                        onChangeText={handleHeightChange}
-                                        testID="height-input"
-                                    />
-                                </View>
-                            </View>
+                            {/* Aspect ratio + size picker (provider-dependent) */}
+                            <ResolutionPicker
+                                official={imageProvider === 'Official'}
+                                selectedRatio={selectedRatio}
+                                width={width}
+                                height={height}
+                                onSelectRatio={handleSelectRatio}
+                                onResolutionSelect={handleResolutionSelect}
+                                onWidthChange={setWidth}
+                                onHeightChange={setHeight}
+                            />
 
                             {/* Reference-image previews (dropped onto /
                                 pasted into the prompt bar): below W/H,
@@ -422,7 +418,7 @@ export default function IndexScreen() {
                 </View>
 
                 {/* Settings dialog (LLM + image generation endpoints/credentials) */}
-                {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+                {showSettings && <SettingsDialog onClose={handleSettingsClose} />}
             </SafeAreaView>
         </>
     );
@@ -500,56 +496,6 @@ const styles = StyleSheet.create({
         color: '#111111',
         textAlign: 'center',
         marginBottom: 28,
-    },
-    ratioRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-        columnGap: 8,
-        rowGap: 8,
-        marginBottom: 20,
-    },
-    ratioButton: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#DDD',
-        backgroundColor: '#FFF',
-    },
-    ratioButtonActive: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
-    },
-    ratioText: {
-        color: '#666',
-        fontSize: 14,
-    },
-    ratioTextActive: {
-        color: '#FFF',
-        fontWeight: 'bold',
-    },
-    dimensionRow: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        columnGap: 48,
-        marginBottom: 20,
-    },
-    dimensionGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    dimensionLabel: {
-        fontSize: 14,
-        color: '#666',
-        marginRight: 8,
-    },
-    dimInput: {
-        borderBottomWidth: 1,
-        borderBottomColor: '#DDD',
-        minWidth: 60,
-        fontSize: 16,
-        paddingVertical: 4,
     },
     // Reference-image preview row (below W/H, above the prompt bar).
     previewRow: {

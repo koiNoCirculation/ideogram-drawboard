@@ -2,7 +2,6 @@ import { ChevronDown, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import {
-    IDEOGRAM_OFFICIAL_BASE,
     IMAGE_PROVIDERS,
     LLM_PROVIDERS,
     LLM_SELF_HOSTED_DEFAULTS,
@@ -66,17 +65,19 @@ export function SelectField({ id, label, value, options, onChange }: {
 }
 
 /** A labeled single-line input; `editable=false` shows a derived/read-only value. */
-function TextField({ label, value, onChange, placeholder, editable = true }: {
+function TextField({ label, value, onChange, placeholder, editable = true, testID }: {
     label: string;
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
     editable?: boolean;
+    testID?: string;
 }) {
     return (
         <View style={styles.field}>
             <Text style={styles.label}>{label}</Text>
             <TextInput
+                testID={testID}
                 style={[styles.input, !editable && styles.inputDisabled]}
                 value={value}
                 onChangeText={editable ? onChange : undefined}
@@ -95,8 +96,10 @@ function TextField({ label, value, onChange, placeholder, editable = true }: {
  * providers only changes which profile is shown — the others are preserved.
  * LLM endpoint is editable only for self-hosted backends (vLLM/SGLang/Ollama,
  * prefilled with their conventional addresses when empty); otherwise the vendor
- * endpoint is shown read-only. Image endpoint is editable only for "Custom",
- * where the official endpoint is shown read-only instead.
+ * endpoint is shown read-only. Image endpoint is editable ONLY for "Custom"
+ * (local/self-hosted service, or a CORS proxy mirroring the official API such
+ * as the cf-worker project); "Official" hardcodes the bare path
+ * /v1/ideogram-v4/generate, shown read-only.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
     const { t } = useI18n();
@@ -182,9 +185,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     />
                     <TextField
                         label={t('imageEndpoint')}
-                        value={isCustomImage ? settings.imageEndpoint : IDEOGRAM_OFFICIAL_BASE}
+                        testID="settings-image-endpoint"
+                        value={isCustomImage ? settings.imageEndpoint : '/v1/ideogram-v4/generate'}
                         onChange={(v) => set('imageEndpoint', v)}
-                        placeholder="http://127.0.0.1:8000"
+                        placeholder={isCustomImage ? 'http://127.0.0.1:8000' : '/v1/ideogram-v4/generate'}
                         editable={isCustomImage}
                     />
                     <TextField

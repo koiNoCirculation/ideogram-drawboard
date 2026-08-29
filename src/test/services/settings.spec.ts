@@ -1,7 +1,6 @@
 import { expect, test } from '@jest/globals';
 import {
     DEFAULT_IMAGE_BASE,
-    IDEOGRAM_OFFICIAL_BASE,
     LLM_CHAT_PATH,
     LLM_OLLAMA_CHAT_PATH,
     LLM_SELF_HOSTED_DEFAULTS,
@@ -11,6 +10,7 @@ import {
     emptyLlmProfile,
     getActiveLlmProfile,
     getLlmUrl,
+    getImageBase,
     getImageUrl,
     getMissingSettings,
     loadSettings,
@@ -79,13 +79,21 @@ test('getActiveLlmProfile returns the selected provider profile', () => {
     expect(getActiveLlmProfile({ ...s, llmProvider: 'Ollama' })).toEqual(profile({ endpoint: 'http://o', secretKey: 'k', name: 'qwen3' }));
 });
 
-test('getImageUrl: Official uses the Ideogram 4 API base, Custom uses the local base', () => {
-    expect(getImageUrl({ ...base, imageProvider: 'Official' }))
-        .toBe(`${IDEOGRAM_OFFICIAL_BASE}/v1/ideogram-v4/generate`);
+test('getImageUrl: Official requests the bare path with no prefix, Custom uses endpoint plus path', () => {
+    // Official requests exactly /v1/ideogram-v4/generate with no host prefix —
+    // any stored endpoint (e.g. a worker URL) is ignored for this provider.
+    expect(getImageUrl({ ...base, imageProvider: 'Official', imageEndpoint: 'https://w.test:8788' }))
+        .toBe('/v1/ideogram-v4/generate');
     expect(getImageUrl(base)).toBe(`${DEFAULT_IMAGE_BASE}/v1/ideogram-v4/generate`);
     // A trailing slash on the user base is tolerated.
     expect(getImageUrl({ ...base, imageEndpoint: 'http://127.0.0.1:8000/' }))
         .toBe(`${DEFAULT_IMAGE_BASE}/v1/ideogram-v4/generate`);
+});
+
+test('getImageBase: Official has no prefix (empty base), Custom is the endpoint (no trailing slash)', () => {
+    expect(getImageBase({ ...base, imageProvider: 'Official', imageEndpoint: 'https://w.test:8788/' }))
+        .toBe('');
+    expect(getImageBase({ ...base, imageEndpoint: 'http://127.0.0.1:8000/' })).toBe(DEFAULT_IMAGE_BASE);
 });
 
 test('getMissingSettings: complete config reports nothing', () => {

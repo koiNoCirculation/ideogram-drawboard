@@ -364,7 +364,7 @@ const GREY = 'rgb(204, 204, 204)';
         const llmEp = page.locator('input[placeholder="http://localhost:8000/v1"]');
         const llmKey = page.locator('input[placeholder="sk-..."]');
         const llmName = page.locator('input[placeholder="gpt-4o"]');
-        const imgEp = page.locator('input[placeholder="http://127.0.0.1:8000"]');
+        const imgEp = page.locator('[data-testid="settings-image-endpoint"]');
         const pick = async (id, opt) => {
             await page.locator(`[data-testid="${id}-select"]`).click();
             await page.locator(`[data-testid="${id}-option-${opt}"]`).click();
@@ -389,8 +389,8 @@ const GREY = 'rgb(204, 204, 204)';
         ok(await llmEp.inputValue() === 'http://localhost:11434', 'Ollama default prefilled (no /v1)');
 
         await pick('image-provider', 'Official');
-        ok(await imgEp.inputValue() === 'https://api.ideogram.ai' && await isLocked(imgEp),
-            'Official image endpoint read-only');
+        ok(await imgEp.inputValue() === '/v1/ideogram-v4/generate' && await isLocked(imgEp),
+            'Official image endpoint read-only (hardcoded path, no prefix)');
         await pick('image-provider', 'Custom');
         ok(await imgEp.inputValue() === 'http://localhost:8000' && !(await isLocked(imgEp)),
             'Custom image endpoint editable');
